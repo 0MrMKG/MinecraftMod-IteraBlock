@@ -77,6 +77,14 @@ public final class LoadedLitematicManager {
         }
     }
 
+    public static void clearAll() {
+        ENTRIES.clear();
+        selectedEntry = null;
+        TemplateSelection.clear();
+        SchematicPlacementState.clear();
+        ClientToolState.setCurrentLitematic(null);
+    }
+
     public record Entry(Path path, LitematicaSchematicInfo info) {
         public String displayName() {
             String metadataName = this.info.metadata().name();

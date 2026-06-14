@@ -51,7 +51,7 @@ public class GuiLoadedLitematicList extends GuiBase {
         Layout layout = this.createLayout();
         List<LoadedLitematicManager.Entry> entries = LoadedLitematicManager.getEntries();
 
-        this.clampSelection(entries);
+        this.syncSelection(entries, layout);
         this.drawText(guiGraphics, Lang.tr("iterablock.gui.loaded_list.title"), layout.x(), layout.titleY(), 0xFFF3EECF, true);
         this.drawPanel(guiGraphics, layout);
         this.drawRows(guiGraphics, mouseX, mouseY, layout, entries);
@@ -83,7 +83,7 @@ public class GuiLoadedLitematicList extends GuiBase {
         }
 
         if (this.isInside(mouseX, mouseY, layout.closeX(), layout.buttonY(), BUTTON_WIDTH, BUTTON_HEIGHT)) {
-            this.closeGui(true);
+            this.returnToMainMenu();
             return true;
         }
 
@@ -152,27 +152,73 @@ public class GuiLoadedLitematicList extends GuiBase {
 
     private void drawButtons(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
         this.drawButton(guiGraphics, layout.unloadX(), layout.buttonY(), Lang.tr("iterablock.gui.loaded_list.unload"), this.isInside(mouseX, mouseY, layout.unloadX(), layout.buttonY(), BUTTON_WIDTH, BUTTON_HEIGHT));
-        this.drawButton(guiGraphics, layout.closeX(), layout.buttonY(), Lang.tr("iterablock.gui.button.close"), this.isInside(mouseX, mouseY, layout.closeX(), layout.buttonY(), BUTTON_WIDTH, BUTTON_HEIGHT));
+        this.drawButton(guiGraphics, layout.closeX(), layout.buttonY(), Lang.tr("iterablock.gui.button.back"), this.isInside(mouseX, mouseY, layout.closeX(), layout.buttonY(), BUTTON_WIDTH, BUTTON_HEIGHT));
     }
 
     private void drawButton(GuiGraphics guiGraphics, int x, int y, String label, boolean hovered) {
-        guiGraphics.fill(x - 1, y - 1, x + BUTTON_WIDTH + 1, y + BUTTON_HEIGHT + 1, hovered ? 0xAAB8DCE8 : 0x774B5A5C);
-        guiGraphics.fill(x, y, x + BUTTON_WIDTH, y + BUTTON_HEIGHT, hovered ? 0xCC2B3436 : 0xAA141A1D);
+        this.drawSimpleButtonBox(guiGraphics, x, y, BUTTON_WIDTH, BUTTON_HEIGHT, hovered);
         guiGraphics.fill(x + 3, y + BUTTON_HEIGHT - 2, x + (hovered ? BUTTON_WIDTH - 4 : 10), y + BUTTON_HEIGHT, ACCENT);
         this.drawText(guiGraphics, label, x + 6, y + 4, hovered ? 0xFFFFF1B0 : TEXT, false);
     }
 
-    private void unloadSelected(List<LoadedLitematicManager.Entry> entries) {
-        if (this.selectedIndex >= 0 && this.selectedIndex < entries.size()) {
-            LoadedLitematicManager.unload(entries.get(this.selectedIndex));
-            this.selectedIndex = Math.min(this.selectedIndex, LoadedLitematicManager.getEntries().size() - 1);
-        }
+    private void drawSimpleButtonBox(GuiGraphics guiGraphics, int x, int y, int width, int height, boolean hovered) {
+        int fill = hovered ? 0xAA5E6666 : 0x8A4A5050;
+        int border = hovered ? 0xE8FFFFFF : 0xBFFFFFFF;
+
+        guiGraphics.fill(x, y, x + width, y + height, fill);
+        guiGraphics.fill(x, y, x + width, y + 1, border);
+        guiGraphics.fill(x, y + height - 1, x + width, y + height, border);
+        guiGraphics.fill(x, y, x + 1, y + height, border);
+        guiGraphics.fill(x + width - 1, y, x + width, y + height, border);
     }
 
-    private void clampSelection(List<LoadedLitematicManager.Entry> entries) {
+    private void unloadSelected(List<LoadedLitematicManager.Entry> entries) {
+        LoadedLitematicManager.Entry entry = this.getSelectedEntry(entries);
+
+        if (entry == null) {
+            return;
+        }
+
+        LoadedLitematicManager.unload(entry);
+        List<LoadedLitematicManager.Entry> updatedEntries = LoadedLitematicManager.getEntries();
+        this.selectedIndex = updatedEntries.indexOf(LoadedLitematicManager.selectedEntry);
+        this.clampScrollOffset(updatedEntries, this.createLayout());
+    }
+
+    private void returnToMainMenu() {
+        this.closeGui(true);
+        GuiBase.openGui(new GuiBuilderHelperMainMenu());
+    }
+
+    private LoadedLitematicManager.Entry getSelectedEntry(List<LoadedLitematicManager.Entry> entries) {
+        if (this.selectedIndex >= 0 && this.selectedIndex < entries.size()) {
+            return entries.get(this.selectedIndex);
+        }
+
+        return LoadedLitematicManager.selectedEntry;
+    }
+
+    private void syncSelection(List<LoadedLitematicManager.Entry> entries, Layout layout) {
+        int currentIndex = entries.indexOf(LoadedLitematicManager.selectedEntry);
+
+        if (currentIndex >= 0) {
+            this.selectedIndex = currentIndex;
+        }
+
         if (this.selectedIndex >= entries.size()) {
             this.selectedIndex = entries.size() - 1;
         }
+
+        if (entries.isEmpty()) {
+            this.selectedIndex = -1;
+        }
+
+        this.clampScrollOffset(entries, layout);
+    }
+
+    private void clampScrollOffset(List<LoadedLitematicManager.Entry> entries, Layout layout) {
+        int maxOffset = Math.max(0, entries.size() - this.getVisibleRowCount(layout));
+        this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset));
     }
 
     private Layout createLayout() {

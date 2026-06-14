@@ -10,8 +10,10 @@ import java.util.Locale;
 import java.util.stream.Stream;
 
 import com.iterablock.client.Lang;
+import com.iterablock.client.config.BuilderHelperClientConfig;
 import com.iterablock.client.litematica.LitematicaSchematicInfo;
 import com.iterablock.client.litematica.LitematicaSchematicReader;
+import com.iterablock.client.hotkeys.VanillaKeyMappings;
 import com.iterablock.client.template.LoadedLitematicManager;
 import com.iterablock.client.template.TemplateSelection;
 
@@ -45,6 +47,7 @@ public class GuiIteraBlockMainMenu extends GuiBase {
     private String searchText = "";
     private String statusText = "";
     private boolean searchFocused;
+    private boolean draggingScrollbar;
     private int scrollOffset;
     private long lastFrameNanos;
     private final boolean returnToMainMenu;
@@ -56,7 +59,7 @@ public class GuiIteraBlockMainMenu extends GuiBase {
     public GuiIteraBlockMainMenu(boolean returnToMainMenu) {
         this.returnToMainMenu = returnToMainMenu;
         this.setTitle(Lang.tr("iterablock.gui.file_browser.title"));
-        this.rootDirectory = Minecraft.getInstance().gameDirectory.toPath().resolve("schematics").toAbsolutePath().normalize();
+        this.rootDirectory = BuilderHelperClientConfig.getLitematicPath();
         this.currentDirectory = this.rootDirectory;
         this.refreshDirectory();
     }
@@ -78,6 +81,7 @@ public class GuiIteraBlockMainMenu extends GuiBase {
     @Override
     protected void drawContents(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
         Layout layout = this.createLayout();
+        this.updateScrollbarDrag(mouseY, layout);
         this.updateAnimations(mouseX, mouseY, layout);
 
         this.drawText(guiGraphics, Lang.tr("iterablock.gui.file_browser.title"), layout.x(), layout.y(), 0xFFF3EECF, true, TITLE_SCALE);
@@ -99,6 +103,13 @@ public class GuiIteraBlockMainMenu extends GuiBase {
             return true;
         }
 
+        if (this.isInsideScrollbar(mouseX, mouseY, layout)) {
+            this.searchFocused = false;
+            this.draggingScrollbar = true;
+            this.setScrollFromMouseY(mouseY, layout);
+            return true;
+        }
+
         if (this.isInside(mouseX, mouseY, layout.searchX(), layout.controlY(), layout.searchWidth(), BUTTON_HEIGHT)) {
             this.searchFocused = true;
             return true;
@@ -107,7 +118,7 @@ public class GuiIteraBlockMainMenu extends GuiBase {
         this.searchFocused = false;
 
         if (this.isInside(mouseX, mouseY, layout.listX(), layout.listY(), layout.listWidth(), layout.listHeight())) {
-            int index = this.scrollOffset + (mouseY - layout.listY()) / ROW_HEIGHT;
+            int index = this.getEntryIndexAtVisibleRow((mouseY - layout.listY()) / ROW_HEIGHT, layout);
 
             if (index >= 0 && index < this.entries.size()) {
                 this.openEntry(this.entries.get(index));
@@ -122,13 +133,22 @@ public class GuiIteraBlockMainMenu extends GuiBase {
     public boolean onMouseScrolled(int mouseX, int mouseY, double amount, double amountHorizontal) {
         Layout layout = this.createLayout();
 
-        if (this.isInside(mouseX, mouseY, layout.listX(), layout.listY(), layout.listWidth(), layout.listHeight())) {
-            int maxOffset = Math.max(0, this.entries.size() - this.getVisibleRowCount(layout));
-            this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset - (int) Math.signum(amount)));
+        if (this.isInsideBrowserScrollArea(mouseX, mouseY, layout)) {
+            this.scrollRows((int) -Math.signum(amount) * 3, layout);
             return true;
         }
 
         return super.onMouseScrolled(mouseX, mouseY, amount, amountHorizontal);
+    }
+
+    @Override
+    public boolean onMouseReleased(int mouseX, int mouseY, int mouseButton) {
+        if (mouseButton == 0 && this.draggingScrollbar) {
+            this.draggingScrollbar = false;
+            return true;
+        }
+
+        return super.onMouseReleased(mouseX, mouseY, mouseButton);
     }
 
     @Override
@@ -152,7 +172,7 @@ public class GuiIteraBlockMainMenu extends GuiBase {
             }
         }
 
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE || (!this.searchFocused && VanillaKeyMappings.matchesOpenFiles(keyCode, scanCode))) {
             if (this.searchFocused) {
                 this.searchFocused = false;
                 return true;
@@ -218,8 +238,12 @@ public class GuiIteraBlockMainMenu extends GuiBase {
 
         int visibleRows = this.getVisibleRowCount(layout);
 
-        for (int i = 0; i < visibleRows && i + this.scrollOffset < this.entries.size(); i++) {
-            int entryIndex = i + this.scrollOffset;
+        for (int i = 0; i < visibleRows; i++) {
+            int entryIndex = this.getEntryIndexAtVisibleRow(i, layout);
+            if (entryIndex < 0 || entryIndex >= this.entries.size()) {
+                continue;
+            }
+
             BrowserEntry entry = this.entries.get(entryIndex);
             int rowY = layout.listY() + i * ROW_HEIGHT;
             double hover = this.easeOutCubic(this.rowHover[entryIndex]);
@@ -239,18 +263,28 @@ public class GuiIteraBlockMainMenu extends GuiBase {
     }
 
     private void drawEntryIcon(GuiGraphics guiGraphics, BrowserEntry entry, int x, int y, boolean active) {
-        int color = active ? ACCENT : 0xFF86A0A4;
+        GuiTextures.drawIcon(guiGraphics, this.getEntryIconName(entry), x - 1, y - 2, 11);
+    }
 
+    private String getEntryIconName(BrowserEntry entry) {
         if (entry.type() == EntryType.PARENT) {
-            guiGraphics.fill(x, y + 3, x + 7, y + 5, color);
-            guiGraphics.fill(x, y + 2, x + 2, y + 6, color);
-        } else if (entry.type() == EntryType.DIRECTORY) {
-            guiGraphics.fill(x, y + 1, x + 4, y + 3, color);
-            guiGraphics.fill(x, y + 3, x + 8, y + 7, color);
-        } else {
-            guiGraphics.fill(x + 1, y, x + 7, y + 8, 0xFF101719);
-            guiGraphics.fill(x + 2, y + 1, x + 6, y + 7, color);
+            return "parent";
         }
+
+        if (entry.type() == EntryType.DIRECTORY) {
+            return "folder";
+        }
+
+        String name = entry.path().getFileName().toString().toLowerCase(Locale.ROOT);
+        if (name.endsWith(".litematic") || name.endsWith(".litematica")) {
+            return "file_litematic";
+        }
+
+        if (name.endsWith(".nbt")) {
+            return "file_nbt";
+        }
+
+        return "file_generic";
     }
 
     private void drawDetails(GuiGraphics guiGraphics, Layout layout) {
@@ -286,7 +320,7 @@ public class GuiIteraBlockMainMenu extends GuiBase {
 
     private void drawPreviewPlaceholder(GuiGraphics guiGraphics, Layout layout, String text) {
         int previewX = layout.detailX() + 8;
-        int previewY = layout.listY() + Math.max(92, layout.listHeight() / 2);
+        int previewY = layout.listY() + Math.max(82, (int) Math.round(layout.listHeight() * 0.38));
         int previewWidth = layout.detailWidth() - 16;
         int previewHeight = layout.listY() + layout.listHeight() - previewY - 8;
 
@@ -301,21 +335,23 @@ public class GuiIteraBlockMainMenu extends GuiBase {
     }
 
     private void drawScrollbar(GuiGraphics guiGraphics, Layout layout) {
-        int visibleRows = this.getVisibleRowCount(layout);
+        int visibleRows = this.getScrollableVisibleRows(layout);
+        int scrollableEntries = Math.max(0, this.entries.size() - this.getScrollableStartIndex());
+        int maxOffset = this.getMaxScrollOffset(layout);
 
-        if (this.entries.size() <= visibleRows) {
+        if (maxOffset <= 0) {
             return;
         }
 
-        int barX = layout.listX() + layout.listWidth() - 5;
+        int barX = this.getScrollbarX(layout);
         int trackY = layout.listY() + 3;
         int trackHeight = layout.listHeight() - 6;
-        int thumbHeight = Math.max(16, trackHeight * visibleRows / this.entries.size());
-        int maxOffset = Math.max(1, this.entries.size() - visibleRows);
+        int thumbHeight = Math.max(16, trackHeight * visibleRows / Math.max(1, scrollableEntries));
         int thumbY = trackY + (trackHeight - thumbHeight) * this.scrollOffset / maxOffset;
 
+        guiGraphics.fill(barX - 2, trackY, barX + 4, trackY + trackHeight, 0x33151A1D);
         guiGraphics.fill(barX, trackY, barX + 2, trackY + trackHeight, 0x66151A1D);
-        guiGraphics.fill(barX - 1, thumbY, barX + 3, thumbY + thumbHeight, 0xAA6F8D78);
+        guiGraphics.fill(barX - 1, thumbY, barX + 3, thumbY + thumbHeight, this.draggingScrollbar ? 0xDDCFEAFF : 0xAA6F8D78);
     }
 
     private void drawBottomButtons(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
@@ -328,14 +364,22 @@ public class GuiIteraBlockMainMenu extends GuiBase {
         double hover = this.easeOutCubic(this.buttonHover[button.action().ordinal()]);
         int offset = compact ? 0 : (int) Math.round(hover * 3.0);
         int x = button.x() + offset;
-        int fill = this.withAlpha(this.blendRgb(0x141A1D, 0x2B3436, hover), 0.70 + hover * 0.10);
-        int border = hover > 0.02 ? 0xAAB8DCE8 : 0x774B5A5C;
         int lineWidth = Math.max(4, (int) Math.round((button.width() - 6) * hover));
 
-        guiGraphics.fill(x - 1, button.y() - 1, x + button.width() + 1, button.y() + button.height() + 1, border);
-        guiGraphics.fill(x, button.y(), x + button.width(), button.y() + button.height(), fill);
+        this.drawSimpleButtonBox(guiGraphics, x, button.y(), button.width(), button.height(), hover);
         guiGraphics.fill(x + 3, button.y() + button.height() - 2, x + 3 + lineWidth, button.y() + button.height(), ACCENT);
         this.drawText(guiGraphics, button.label(), x + 6, button.y() + 4, hover > 0.02 ? 0xFFFFF1B0 : TEXT, false, TEXT_SCALE);
+    }
+
+    private void drawSimpleButtonBox(GuiGraphics guiGraphics, int x, int y, int width, int height, double hover) {
+        int fill = hover > 0.02 ? 0xAA5E6666 : 0x8A4A5050;
+        int border = hover > 0.02 ? 0xE8FFFFFF : 0xBFFFFFFF;
+
+        guiGraphics.fill(x, y, x + width, y + height, fill);
+        guiGraphics.fill(x, y, x + width, y + 1, border);
+        guiGraphics.fill(x, y + height - 1, x + width, y + height, border);
+        guiGraphics.fill(x, y, x + 1, y + height, border);
+        guiGraphics.fill(x + width - 1, y, x + width, y + height, border);
     }
 
     private void updateAnimations(int mouseX, int mouseY, Layout layout) {
@@ -347,7 +391,7 @@ public class GuiIteraBlockMainMenu extends GuiBase {
         this.ensureRowHoverSize();
 
         for (int i = 0; i < this.rowHover.length; i++) {
-            int visibleIndex = i - this.scrollOffset;
+            int visibleIndex = this.getVisibleRowForEntryIndex(i, layout);
             boolean hovered = visibleIndex >= 0 && visibleIndex < this.getVisibleRowCount(layout)
                     && this.isInside(mouseX, mouseY, layout.listX() + 4, layout.listY() + visibleIndex * ROW_HEIGHT, layout.listWidth() - 10, ROW_HEIGHT);
             this.rowHover[i] = this.approach(this.rowHover[i], hovered ? 1.0 : 0.0, HOVER_SPEED, deltaTime);
@@ -375,7 +419,7 @@ public class GuiIteraBlockMainMenu extends GuiBase {
                 case HOME -> this.goHome();
                 case RELOAD -> this.refreshDirectory();
                 case LOAD -> this.loadSelected();
-                case CANCEL -> this.closeGui(true);
+                case CANCEL -> this.returnToMainMenu();
             }
 
             return true;
@@ -387,6 +431,7 @@ public class GuiIteraBlockMainMenu extends GuiBase {
     private void refreshDirectory() {
         this.entries.clear();
         this.statusText = "";
+        this.draggingScrollbar = false;
 
         try {
             Files.createDirectories(this.rootDirectory);
@@ -420,9 +465,107 @@ public class GuiIteraBlockMainMenu extends GuiBase {
             this.clearSelected();
         }
 
-        int maxOffset = Math.max(0, this.entries.size() - this.getVisibleRowCount(this.createLayout()));
+        int maxOffset = this.getMaxScrollOffset(this.createLayout());
         this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxOffset));
         this.ensureRowHoverSize();
+    }
+
+    private void scrollRows(int rows, Layout layout) {
+        int maxOffset = this.getMaxScrollOffset(layout);
+        this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset + rows));
+    }
+
+    private boolean isInsideBrowserScrollArea(int mouseX, int mouseY, Layout layout) {
+        return this.isInside(mouseX, mouseY, layout.x(), layout.listY(), layout.width(), layout.listHeight());
+    }
+
+    private boolean isInsideScrollbar(int mouseX, int mouseY, Layout layout) {
+        return this.getMaxScrollOffset(layout) > 0
+                && this.isInside(mouseX, mouseY, this.getScrollbarX(layout) - 3, layout.listY(), 10, layout.listHeight());
+    }
+
+    private int getScrollbarX(Layout layout) {
+        return layout.listX() + layout.listWidth() - 5;
+    }
+
+    private void setScrollFromMouseY(int mouseY, Layout layout) {
+        int visibleRows = this.getScrollableVisibleRows(layout);
+        int maxOffset = this.getMaxScrollOffset(layout);
+
+        if (maxOffset <= 0) {
+            this.scrollOffset = 0;
+            return;
+        }
+
+        int trackY = layout.listY() + 3;
+        int trackHeight = layout.listHeight() - 6;
+        int scrollableEntries = Math.max(0, this.entries.size() - this.getScrollableStartIndex());
+        int thumbHeight = Math.max(16, trackHeight * visibleRows / Math.max(1, scrollableEntries));
+        int usableHeight = Math.max(1, trackHeight - thumbHeight);
+        int relativeY = Math.max(0, Math.min(usableHeight, mouseY - trackY - thumbHeight / 2));
+        this.scrollOffset = Math.max(0, Math.min(maxOffset, Math.round(relativeY * maxOffset / (float) usableHeight)));
+    }
+
+    private boolean hasPinnedParentEntry() {
+        return !this.entries.isEmpty() && this.entries.get(0).type() == EntryType.PARENT;
+    }
+
+    private int getScrollableStartIndex() {
+        return this.hasPinnedParentEntry() ? 1 : 0;
+    }
+
+    private int getScrollableVisibleRows(Layout layout) {
+        return Math.max(0, this.getVisibleRowCount(layout) - this.getScrollableStartIndex());
+    }
+
+    private int getMaxScrollOffset(Layout layout) {
+        int scrollableEntries = Math.max(0, this.entries.size() - this.getScrollableStartIndex());
+        return Math.max(0, scrollableEntries - this.getScrollableVisibleRows(layout));
+    }
+
+    private int getEntryIndexAtVisibleRow(int visibleRow, Layout layout) {
+        if (visibleRow < 0 || visibleRow >= this.getVisibleRowCount(layout)) {
+            return -1;
+        }
+
+        if (this.hasPinnedParentEntry()) {
+            if (visibleRow == 0) {
+                return 0;
+            }
+
+            return this.getScrollableStartIndex() + this.scrollOffset + visibleRow - 1;
+        }
+
+        return this.scrollOffset + visibleRow;
+    }
+
+    private int getVisibleRowForEntryIndex(int entryIndex, Layout layout) {
+        if (this.hasPinnedParentEntry()) {
+            if (entryIndex == 0) {
+                return 0;
+            }
+
+            int visibleRow = entryIndex - this.getScrollableStartIndex() - this.scrollOffset + 1;
+            return visibleRow >= 1 && visibleRow < this.getVisibleRowCount(layout) ? visibleRow : -1;
+        }
+
+        int visibleRow = entryIndex - this.scrollOffset;
+        return visibleRow >= 0 && visibleRow < this.getVisibleRowCount(layout) ? visibleRow : -1;
+    }
+
+    private void updateScrollbarDrag(int mouseY, Layout layout) {
+        if (!this.draggingScrollbar) {
+            return;
+        }
+
+        long window = Minecraft.getInstance().getWindow().getWindow();
+
+        if (GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) != GLFW.GLFW_PRESS) {
+            this.draggingScrollbar = false;
+            return;
+        }
+
+        this.setScrollFromMouseY(mouseY, layout);
     }
 
     private boolean shouldShowEntry(Path path) {
@@ -514,8 +657,13 @@ public class GuiIteraBlockMainMenu extends GuiBase {
         buttons.add(new SmallButton(x, y, BOTTOM_BUTTON_WIDTH, BUTTON_HEIGHT, Lang.tr("iterablock.gui.button.reload"), ButtonAction.RELOAD));
         buttons.add(new SmallButton(x + BOTTOM_BUTTON_WIDTH + 6, y, BOTTOM_BUTTON_WIDTH, BUTTON_HEIGHT, Lang.tr("iterablock.gui.button.home"), ButtonAction.HOME));
         buttons.add(new SmallButton(rightX, y, BOTTOM_BUTTON_WIDTH, BUTTON_HEIGHT, Lang.tr("iterablock.gui.button.load"), ButtonAction.LOAD));
-        buttons.add(new SmallButton(rightX + BOTTOM_BUTTON_WIDTH + 6, y, BOTTOM_BUTTON_WIDTH, BUTTON_HEIGHT, Lang.tr("iterablock.gui.button.cancel"), ButtonAction.CANCEL));
+        buttons.add(new SmallButton(rightX + BOTTOM_BUTTON_WIDTH + 6, y, BOTTOM_BUTTON_WIDTH, BUTTON_HEIGHT, Lang.tr("iterablock.gui.button.back"), ButtonAction.CANCEL));
         return buttons;
+    }
+
+    private void returnToMainMenu() {
+        this.closeGui(true);
+        GuiBase.openGui(new GuiBuilderHelperMainMenu());
     }
 
     private Layout createLayout() {
@@ -523,9 +671,9 @@ public class GuiIteraBlockMainMenu extends GuiBase {
         int y = 8;
         int width = Math.max(280, this.width - SAFE_MARGIN * 2);
         int controlY = y + 27;
-        int bottomY = this.height - 10 - BUTTON_HEIGHT;
+        int bottomY = this.height - 4 - BUTTON_HEIGHT;
         int listY = y + TOP_HEIGHT;
-        int listHeight = Math.max(72, bottomY - listY - 6);
+        int listHeight = Math.max(72, bottomY - listY - 2);
         int gap = 10;
         int listWidth = Math.max(150, (int) Math.round(width * 0.47));
         int detailWidth = Math.max(120, width - listWidth - gap);

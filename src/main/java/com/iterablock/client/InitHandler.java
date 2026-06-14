@@ -24,6 +24,7 @@ public class InitHandler implements IInitializationHandler {
         InputEventHandler.getInputManager().registerKeyboardInputHandler(ToolInputHandler.getInstance());
         InputEventHandler.getInputManager().registerMouseInputHandler(ToolInputHandler.getInstance());
         RenderEventHandler.getInstance().registerGameOverlayRenderer(ToolHudRenderer.getInstance());
+        NeoForge.EVENT_BUS.register(WorldSessionHandler.getInstance());
         NeoForge.EVENT_BUS.register(HudVisibilityHandler.getInstance());
         NeoForge.EVENT_BUS.register(SchematicProjectionRenderer.getInstance());
     }

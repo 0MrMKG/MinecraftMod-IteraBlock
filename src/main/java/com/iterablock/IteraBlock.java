@@ -1,6 +1,7 @@
 package com.iterablock;
 
 import com.iterablock.client.InitHandler;
+import com.iterablock.client.hotkeys.VanillaKeyMappings;
 import com.iterablock.network.IteraBlockNetwork;
 
 import net.neoforged.api.distmarker.Dist;
@@ -17,6 +18,7 @@ public class IteraBlock {
         modEventBus.addListener(IteraBlockNetwork::register);
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
+            modEventBus.addListener(VanillaKeyMappings::register);
             InitHandler.register();
         }
     }

@@ -32,9 +32,13 @@ public final class TemplateSelection {
 
     public static void clearIfPath(Path path) {
         if (path != null && loadedPath != null && loadedPath.toAbsolutePath().normalize().equals(path.toAbsolutePath().normalize())) {
-            loadedPath = null;
-            litematicaInfo = null;
-            parseError = null;
+            clear();
         }
+    }
+
+    public static void clear() {
+        loadedPath = null;
+        litematicaInfo = null;
+        parseError = null;
     }
 }

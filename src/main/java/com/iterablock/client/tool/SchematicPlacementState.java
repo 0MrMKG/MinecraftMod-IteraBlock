@@ -1,5 +1,8 @@
 package com.iterablock.client.tool;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.iterablock.client.template.LoadedLitematicManager;
 import com.iterablock.client.litematica.LitematicaSchematicInfo;
 
@@ -10,12 +13,19 @@ import net.minecraft.world.phys.Vec3;
 
 public final class SchematicPlacementState {
     private static final int MAX_LINEAR_ARRAY_COUNT = 64;
+    private static final int MAX_VOLUME_ARRAY_AXIS_COUNT = 4;
     private static LoadedLitematicManager.Entry entry;
     private static BlockPos origin;
     private static int rotationSteps;
     private static int linearArrayX;
     private static int linearArrayY;
     private static int linearArrayZ;
+    private static int volumeArrayX;
+    private static int volumeArrayY;
+    private static int volumeArrayZ;
+    private static int overlapX;
+    private static int overlapY;
+    private static int overlapZ;
 
     private SchematicPlacementState() {
     }
@@ -23,6 +33,7 @@ public final class SchematicPlacementState {
     public static void place(LoadedLitematicManager.Entry selectedEntry, BlockPos selectedOrigin) {
         entry = selectedEntry;
         origin = selectedOrigin;
+        resetArrayCounts();
     }
 
     public static LoadedLitematicManager.Entry getEntry() {
@@ -71,6 +82,24 @@ public final class SchematicPlacementState {
         }
     }
 
+    public static void adjustVolumeArray(Vec3 lookDirection, int amount) {
+        if (amount == 0) {
+            return;
+        }
+
+        double absX = Math.abs(lookDirection.x);
+        double absY = Math.abs(lookDirection.y);
+        double absZ = Math.abs(lookDirection.z);
+
+        if (absX >= absY && absX >= absZ) {
+            volumeArrayX = clampVolumeArrayCount(volumeArrayX + signFrom(lookDirection.x) * amount);
+        } else if (absY >= absZ) {
+            volumeArrayY = clampVolumeArrayCount(volumeArrayY + signFrom(lookDirection.y) * amount);
+        } else {
+            volumeArrayZ = clampVolumeArrayCount(volumeArrayZ + signFrom(lookDirection.z) * amount);
+        }
+    }
+
     public static int getLinearArrayCopyCount() {
         return Math.abs(getLinearArrayCount()) + 1;
     }
@@ -108,19 +137,88 @@ public final class SchematicPlacementState {
             return BlockPos.ZERO;
         }
 
+        BlockPos overlapStep = applyOverlap(step);
+
         if (linearArrayX != 0) {
-            return new BlockPos(Integer.signum(linearArrayX) * step.getX() * copyIndex, 0, 0);
+            return new BlockPos(Integer.signum(linearArrayX) * overlapStep.getX() * copyIndex, 0, 0);
         }
 
         if (linearArrayY != 0) {
-            return new BlockPos(0, Integer.signum(linearArrayY) * step.getY() * copyIndex, 0);
+            return new BlockPos(0, Integer.signum(linearArrayY) * overlapStep.getY() * copyIndex, 0);
         }
 
         if (linearArrayZ != 0) {
-            return new BlockPos(0, 0, Integer.signum(linearArrayZ) * step.getZ() * copyIndex);
+            return new BlockPos(0, 0, Integer.signum(linearArrayZ) * overlapStep.getZ() * copyIndex);
         }
 
         return BlockPos.ZERO;
+    }
+
+    public static List<BlockPos> getVolumeArrayOffsets(BlockPos step) {
+        BlockPos overlapStep = applyOverlap(step);
+        int xCopies = Math.abs(volumeArrayX) + 1;
+        int yCopies = Math.abs(volumeArrayY) + 1;
+        int zCopies = Math.abs(volumeArrayZ) + 1;
+        int xSign = Integer.signum(volumeArrayX);
+        int ySign = Integer.signum(volumeArrayY);
+        int zSign = Integer.signum(volumeArrayZ);
+        List<BlockPos> offsets = new ArrayList<>(xCopies * yCopies * zCopies);
+
+        for (int x = 0; x < xCopies; x++) {
+            for (int y = 0; y < yCopies; y++) {
+                for (int z = 0; z < zCopies; z++) {
+                    offsets.add(new BlockPos(xSign * overlapStep.getX() * x, ySign * overlapStep.getY() * y, zSign * overlapStep.getZ() * z));
+                }
+            }
+        }
+
+        return offsets;
+    }
+
+    public static void adjustOverlap(Axis axis, int amount) {
+        switch (axis) {
+            case X -> overlapX = clampOverlap(overlapX + amount);
+            case Y -> overlapY = clampOverlap(overlapY + amount);
+            case Z -> overlapZ = clampOverlap(overlapZ + amount);
+        }
+    }
+
+    public static void resetOverlap() {
+        overlapX = 0;
+        overlapY = 0;
+        overlapZ = 0;
+    }
+
+    public static int getOverlap(Axis axis) {
+        return switch (axis) {
+            case X -> overlapX;
+            case Y -> overlapY;
+            case Z -> overlapZ;
+        };
+    }
+
+    public static Axis getLookAxis(Vec3 lookDirection) {
+        double absX = Math.abs(lookDirection.x);
+        double absY = Math.abs(lookDirection.y);
+        double absZ = Math.abs(lookDirection.z);
+
+        if (absX >= absY && absX >= absZ) {
+            return Axis.X;
+        }
+
+        return absY >= absZ ? Axis.Y : Axis.Z;
+    }
+
+    public static String getVolumeArraySummary() {
+        return "X " + volumeArrayX + " / Y " + volumeArrayY + " / Z " + volumeArrayZ;
+    }
+
+    public static int getVolumeArrayCount(Axis axis) {
+        return switch (axis) {
+            case X -> volumeArrayX;
+            case Y -> volumeArrayY;
+            case Z -> volumeArrayZ;
+        };
     }
 
     public static BlockPos getLinearArrayStep(LitematicaSchematicInfo info) {
@@ -193,10 +291,24 @@ public final class SchematicPlacementState {
 
     public static void clearIfEntry(LoadedLitematicManager.Entry removedEntry) {
         if (entry == removedEntry) {
-            entry = null;
-            origin = null;
-            rotationSteps = 0;
+            clear();
         }
+    }
+
+    public static void clear() {
+        entry = null;
+        origin = null;
+        rotationSteps = 0;
+        resetArrayCounts();
+    }
+
+    public static void resetArrayCounts() {
+        linearArrayX = 0;
+        linearArrayY = 0;
+        linearArrayZ = 0;
+        volumeArrayX = 0;
+        volumeArrayY = 0;
+        volumeArrayZ = 0;
     }
 
     private static BlockPos orientLocalPos(BlockPos localPos, BlockPos regionSize) {
@@ -210,7 +322,29 @@ public final class SchematicPlacementState {
         return Math.max(-MAX_LINEAR_ARRAY_COUNT, Math.min(MAX_LINEAR_ARRAY_COUNT, count));
     }
 
+    private static int clampVolumeArrayCount(int count) {
+        return Math.max(-MAX_VOLUME_ARRAY_AXIS_COUNT, Math.min(MAX_VOLUME_ARRAY_AXIS_COUNT, count));
+    }
+
+    private static int clampOverlap(int value) {
+        return Math.max(0, Math.min(999, value));
+    }
+
+    private static BlockPos applyOverlap(BlockPos step) {
+        return new BlockPos(
+                Math.max(1, step.getX() - overlapX),
+                Math.max(1, step.getY() - overlapY),
+                Math.max(1, step.getZ() - overlapZ)
+        );
+    }
+
     private static int signFrom(double value) {
         return value < 0.0 ? -1 : 1;
+    }
+
+    public enum Axis {
+        X,
+        Y,
+        Z
     }
 }

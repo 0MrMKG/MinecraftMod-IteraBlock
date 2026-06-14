@@ -13,7 +13,9 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -32,6 +34,20 @@ public class SchematicProjectionRenderer {
     private static final int BOUNDING_BOX_COLOR = 0xD08AE8FF;
     private static final int TARGET_FILL_COLOR = 0x4400FF66;
     private static final int TARGET_LINE_COLOR = 0xF000FF66;
+    private static final int AREA_SELECTION_FILL_COLOR = 0x229EB8A6;
+    private static final int AREA_SELECTION_LINE_COLOR = 0xF4FFFFFF;
+    private static final int AREA_FIRST_POINT_FILL_COLOR = 0x66AFD7E8;
+    private static final int AREA_FIRST_POINT_LINE_COLOR = 0xFFFFFFFF;
+    private static final int AREA_FIRST_POINT_ACTIVE_LINE_COLOR = 0xFFFFFFFF;
+    private static final int AREA_SECOND_POINT_FILL_COLOR = 0x66E8D9AF;
+    private static final int AREA_SECOND_POINT_LINE_COLOR = 0xFFFFFFFF;
+    private static final int AREA_SECOND_POINT_ACTIVE_LINE_COLOR = 0xFFFFFFFF;
+    private static final int BEZIER_CURVE_LINE_COLOR = 0xE0F3C6D3;
+    private static final int BEZIER_CURVE_FILL_COLOR = 0x33F3C6D3;
+    private static final int BEZIER_POINT_LINE_COLOR = 0xF0F6D6A8;
+    private static final int BEZIER_POINT_FILL_COLOR = 0x55F6D6A8;
+    private static final int BEZIER_PREVIOUS_POINT_LINE_COLOR = 0xF0FF4A4A;
+    private static final int BEZIER_PREVIOUS_POINT_FILL_COLOR = 0x44FF4A4A;
 
     private SchematicProjectionRenderer() {
     }
@@ -53,12 +69,15 @@ public class SchematicProjectionRenderer {
         }
 
         PoseStack poseStack = event.getPoseStack();
-        Vec3 camera = event.getCamera().getPosition();
+        Camera camera = event.getCamera();
+        Vec3 cameraPos = camera.getPosition();
 
         poseStack.pushPose();
-        poseStack.translate(-camera.x, -camera.y, -camera.z);
+        poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+        this.renderAreaSelection(poseStack);
         this.renderActivePlacement(minecraft, poseStack);
         this.renderPlacementTarget(poseStack);
+        this.renderBezierCurve(minecraft, poseStack, camera);
         poseStack.popPose();
     }
 
@@ -84,9 +103,9 @@ public class SchematicProjectionRenderer {
             return;
         }
 
-        int copies = ToolState.getMode() == ToolMode.LINEAR_ARRAY ? SchematicPlacementState.getLinearArrayCopyCount() : 1;
-        int realRenderLimit = Math.min(copies, ToolState.getMode() == ToolMode.LINEAR_ARRAY ? BuilderHelperClientConfig.getLinearArrayRenderLimit() : copies);
         BlockPos arrayStep = SchematicPlacementState.getLinearArrayStep(entry.info());
+        List<BlockPos> offsets = this.getPlacementOffsets(arrayStep);
+        int realRenderLimit = this.getRealRenderLimit(offsets.size());
         MultiBufferSource.BufferSource bufferSource = minecraft.renderBuffers().bufferSource();
 
         if (realRenderLimit > 0) {
@@ -95,7 +114,7 @@ public class SchematicProjectionRenderer {
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 0.8F);
 
             for (int copy = 0; copy < realRenderLimit; copy++) {
-                BlockPos copyOrigin = origin.offset(SchematicPlacementState.getLinearArrayOffset(copy, arrayStep));
+                BlockPos copyOrigin = origin.offset(offsets.get(copy));
                 this.renderPlacement(minecraft, poseStack, bufferSource, copyOrigin, entry.info());
             }
 
@@ -104,14 +123,46 @@ public class SchematicProjectionRenderer {
             RenderSystem.disableBlend();
         }
 
-        for (int copy = 0; copy < copies; copy++) {
-            BlockPos copyOrigin = origin.offset(SchematicPlacementState.getLinearArrayOffset(copy, arrayStep));
+        for (BlockPos offset : offsets) {
+            BlockPos copyOrigin = origin.offset(offset);
             Bounds bounds = this.findPlacementBounds(copyOrigin, entry.info());
 
             if (bounds != null) {
                 this.renderLineBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), BOUNDING_BOX_COLOR);
             }
         }
+    }
+
+    private List<BlockPos> getPlacementOffsets(BlockPos arrayStep) {
+        if (ToolState.getMode() == ToolMode.LINEAR_ARRAY) {
+            List<BlockPos> offsets = new java.util.ArrayList<>();
+            int copies = SchematicPlacementState.getLinearArrayCopyCount();
+
+            for (int copy = 0; copy < copies; copy++) {
+                offsets.add(SchematicPlacementState.getLinearArrayOffset(copy, arrayStep));
+            }
+
+            return offsets;
+        }
+
+        if (ToolState.getMode() == ToolMode.VOLUME_ARRAY) {
+            return SchematicPlacementState.getVolumeArrayOffsets(arrayStep);
+        }
+
+        return java.util.List.of(BlockPos.ZERO);
+    }
+
+    private int getRealRenderLimit(int copies) {
+        if (ToolState.getMode() == ToolMode.LINEAR_ARRAY) {
+            return Math.min(copies, BuilderHelperClientConfig.getLinearArrayRenderLimit());
+        }
+
+        if (ToolState.getMode() == ToolMode.VOLUME_ARRAY) {
+            int axisLimit = BuilderHelperClientConfig.getVolumeArrayRenderLimit();
+            return Math.min(copies, axisLimit * axisLimit * axisLimit);
+        }
+
+        return copies;
     }
 
     private void renderPlacement(Minecraft minecraft, PoseStack poseStack, MultiBufferSource bufferSource, BlockPos origin, LitematicaSchematicInfo info) {
@@ -208,6 +259,84 @@ public class SchematicProjectionRenderer {
 
         this.renderFilledBox(poseStack, target.getX(), target.getY(), target.getZ(), target.getX() + 1, target.getY() + 1, target.getZ() + 1, TARGET_FILL_COLOR);
         this.renderLineBox(poseStack, target.getX(), target.getY(), target.getZ(), target.getX() + 1, target.getY() + 1, target.getZ() + 1, TARGET_LINE_COLOR);
+    }
+
+    private void renderAreaSelection(PoseStack poseStack) {
+        if (ToolState.getMode() != ToolMode.AREA_COPY_PASTE) {
+            return;
+        }
+
+        BlockPos first = AreaSelectionState.getFirstCorner();
+        BlockPos second = AreaSelectionState.getSecondCorner();
+
+        if (first != null) {
+            int lineColor = AreaSelectionState.getActiveCorner() == AreaSelectionState.Corner.FIRST ? AREA_FIRST_POINT_ACTIVE_LINE_COLOR : AREA_FIRST_POINT_LINE_COLOR;
+            this.renderAreaPointBox(poseStack, first, AREA_FIRST_POINT_FILL_COLOR, lineColor);
+        }
+
+        if (second != null) {
+            int lineColor = AreaSelectionState.getActiveCorner() == AreaSelectionState.Corner.SECOND ? AREA_SECOND_POINT_ACTIVE_LINE_COLOR : AREA_SECOND_POINT_LINE_COLOR;
+            this.renderAreaPointBox(poseStack, second, AREA_SECOND_POINT_FILL_COLOR, lineColor);
+        }
+
+        if (first == null || second == null) {
+            return;
+        }
+
+        int minX = Math.min(first.getX(), second.getX());
+        int minY = Math.min(first.getY(), second.getY());
+        int minZ = Math.min(first.getZ(), second.getZ());
+        int maxX = Math.max(first.getX(), second.getX()) + 1;
+        int maxY = Math.max(first.getY(), second.getY()) + 1;
+        int maxZ = Math.max(first.getZ(), second.getZ()) + 1;
+        this.renderFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, AREA_SELECTION_FILL_COLOR);
+        this.renderLineBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, AREA_SELECTION_LINE_COLOR);
+    }
+
+    private void renderAreaPointBox(PoseStack poseStack, BlockPos point, int fillColor, int lineColor) {
+        this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, fillColor);
+        this.renderLineBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, lineColor);
+    }
+
+    private void renderBezierCurve(Minecraft minecraft, PoseStack poseStack, Camera camera) {
+        if (ToolState.getMode() != ToolMode.BEZIER_CURVE_GENERATION) {
+            return;
+        }
+
+        List<BlockPos> previousPoints = BezierCurveState.getPreviousControlPoints();
+        for (int i = 0; i < previousPoints.size(); i++) {
+            BlockPos point = previousPoints.get(i);
+            this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, BEZIER_PREVIOUS_POINT_FILL_COLOR);
+            this.renderLineBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, BEZIER_PREVIOUS_POINT_LINE_COLOR);
+            this.renderPointLabel(minecraft, poseStack, camera, point, Integer.toString(i + 1), 0xFFFF6A6A);
+        }
+
+        List<BlockPos> currentPoints = BezierCurveState.getControlPoints();
+        for (int i = 0; i < currentPoints.size(); i++) {
+            BlockPos point = currentPoints.get(i);
+            this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, BEZIER_POINT_FILL_COLOR);
+            this.renderLineBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, BEZIER_POINT_LINE_COLOR);
+            this.renderPointLabel(minecraft, poseStack, camera, point, Integer.toString(i + 1), 0xFFFFF1B0);
+        }
+
+        for (BlockPos block : BezierCurveState.getCurveBlocks()) {
+            this.renderFilledBox(poseStack, block.getX(), block.getY(), block.getZ(), block.getX() + 1, block.getY() + 1, block.getZ() + 1, BEZIER_CURVE_FILL_COLOR);
+            this.renderLineBox(poseStack, block.getX(), block.getY(), block.getZ(), block.getX() + 1, block.getY() + 1, block.getZ() + 1, BEZIER_CURVE_LINE_COLOR);
+        }
+    }
+
+    private void renderPointLabel(Minecraft minecraft, PoseStack poseStack, Camera camera, BlockPos point, String label, int color) {
+        Font font = minecraft.font;
+        MultiBufferSource.BufferSource bufferSource = minecraft.renderBuffers().bufferSource();
+
+        poseStack.pushPose();
+        poseStack.translate(point.getX() + 0.5, point.getY() + 1.28, point.getZ() + 0.5);
+        poseStack.mulPose(camera.rotation());
+        poseStack.scale(-0.025F, -0.025F, 0.025F);
+        float textX = -font.width(label) / 2.0F;
+        font.drawInBatch(label, textX, 0.0F, color, false, poseStack.last().pose(), bufferSource, Font.DisplayMode.SEE_THROUGH, 0x66000000, LightTexture.FULL_BRIGHT);
+        bufferSource.endBatch();
+        poseStack.popPose();
     }
 
     private void renderFilledBox(PoseStack poseStack, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {

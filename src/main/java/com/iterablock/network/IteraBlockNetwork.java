@@ -56,7 +56,6 @@ public final class IteraBlockNetwork {
     private static boolean canReplace(BlockState currentState, PlacementReplaceMode replaceMode) {
         return switch (replaceMode) {
             case REPLACE_ALL -> true;
-            case ONLY_REPLACE_BLOCKS -> !currentState.isAir();
             case ONLY_REPLACE_AIR -> currentState.isAir();
         };
     }

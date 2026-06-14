@@ -3,13 +3,12 @@ package com.iterablock.client.tool;
 import com.iterablock.client.Lang;
 
 public enum ToolMode {
+    AREA_COPY_PASTE("iterablock.tool.mode.area_copy_paste", "iterablock.tool.mode.area_copy_paste.description", false),
     SCHEMATIC_PLACEMENT("iterablock.tool.mode.schematic_placement", "iterablock.tool.mode.schematic_placement.description", true),
-    QUICK_SCHEMATIC_PLACEMENT("iterablock.tool.mode.quick_schematic_placement", "iterablock.tool.mode.quick_schematic_placement.description", true),
-    ITERATIVE_SCHEMATIC_PLACEMENT("iterablock.tool.mode.iterative_schematic_placement", "iterablock.tool.mode.iterative_schematic_placement.description", true),
-    RANDOM_SCHEMATIC_PLACEMENT("iterablock.tool.mode.random_schematic_placement", "iterablock.tool.mode.random_schematic_placement.description", true),
     LINEAR_ARRAY("iterablock.tool.mode.linear_array", "iterablock.tool.mode.linear_array.description", true),
     VOLUME_ARRAY("iterablock.tool.mode.volume_array", "iterablock.tool.mode.volume_array.description", true),
-    BEZIER_CURVE_GENERATION("iterablock.tool.mode.bezier_curve_generation", "iterablock.tool.mode.bezier_curve_generation.description", true);
+    RANDOM_SCHEMATIC_PLACEMENT("iterablock.tool.mode.random_schematic_placement", "iterablock.tool.mode.random_schematic_placement.description", true),
+    BEZIER_CURVE_GENERATION("iterablock.tool.mode.bezier_curve_generation", "iterablock.tool.mode.bezier_curve_generation.description", false);
 
     private final String displayNameKey;
     private final String descriptionKey;

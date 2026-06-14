@@ -3,6 +3,8 @@ package com.iterablock.client.gui;
 import java.util.List;
 
 import com.iterablock.client.Lang;
+import com.iterablock.client.config.BuilderHelperClientConfig;
+import com.iterablock.client.hotkeys.VanillaKeyMappings;
 import com.iterablock.client.template.LoadedLitematicManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -38,7 +40,7 @@ public class GuiRadialMenu extends GuiBase {
             0xE7C74A,
             0x55B86A,
             0x4C8FE8,
-            0x8B5CE8
+            0xF3B7C8
     };
 
     private double[] hoverProgress = new double[0];
@@ -443,8 +445,7 @@ public class GuiRadialMenu extends GuiBase {
     }
 
     private boolean isOpenKeyDown() {
-        long window = Minecraft.getInstance().getWindow().getWindow();
-        return GLFW.glfwGetKey(window, GLFW.GLFW_KEY_U) == GLFW.GLFW_PRESS;
+        return VanillaKeyMappings.isOpenRadialDown() || BuilderHelperClientConfig.isOpenRadialKeyDown();
     }
 
     private void closeRadialMenu() {
