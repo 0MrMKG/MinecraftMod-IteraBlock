@@ -3,6 +3,7 @@ package com.iterablock.client;
 import com.iterablock.client.template.LoadedLitematicManager;
 import com.iterablock.client.tool.AreaSelectionState;
 import com.iterablock.client.tool.BezierCurveState;
+import com.iterablock.client.tool.CommandFeedbackSilencer;
 
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
@@ -22,5 +23,6 @@ public class WorldSessionHandler {
         LoadedLitematicManager.clearAll();
         AreaSelectionState.clear();
         BezierCurveState.clear();
+        CommandFeedbackSilencer.getInstance().clear();
     }
 }

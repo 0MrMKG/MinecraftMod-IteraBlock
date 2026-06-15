@@ -1,6 +1,7 @@
 package com.iterablock.client.tool;
 
 import java.util.List;
+import java.util.Set;
 
 import com.iterablock.client.config.BuilderHelperClientConfig;
 import com.iterablock.client.litematica.LitematicaSchematicInfo;
@@ -34,6 +35,8 @@ public class SchematicProjectionRenderer {
     private static final int BOUNDING_BOX_COLOR = 0xD08AE8FF;
     private static final int TARGET_FILL_COLOR = 0x4400FF66;
     private static final int TARGET_LINE_COLOR = 0xF000FF66;
+    private static final int OCCUPIED_FILL_COLOR = TARGET_FILL_COLOR;
+    private static final int OCCUPIED_LINE_COLOR = TARGET_LINE_COLOR;
     private static final int AREA_SELECTION_FILL_COLOR = 0x229EB8A6;
     private static final int AREA_SELECTION_LINE_COLOR = 0xF4FFFFFF;
     private static final int AREA_FIRST_POINT_FILL_COLOR = 0x66AFD7E8;
@@ -48,6 +51,7 @@ public class SchematicProjectionRenderer {
     private static final int BEZIER_POINT_FILL_COLOR = 0x55F6D6A8;
     private static final int BEZIER_PREVIOUS_POINT_LINE_COLOR = 0xF0FF4A4A;
     private static final int BEZIER_PREVIOUS_POINT_FILL_COLOR = 0x44FF4A4A;
+    private static final double OCCUPIED_MARKER_EPSILON = 0.003D;
 
     private SchematicProjectionRenderer() {
     }
@@ -107,6 +111,8 @@ public class SchematicProjectionRenderer {
         List<BlockPos> offsets = this.getPlacementOffsets(arrayStep);
         int realRenderLimit = this.getRealRenderLimit(offsets.size());
         MultiBufferSource.BufferSource bufferSource = minecraft.renderBuffers().bufferSource();
+        List<BlockPos> occupiedBlocks = new java.util.ArrayList<>();
+        Set<BlockPos> occupiedBlockSet = new java.util.HashSet<>();
 
         if (realRenderLimit > 0) {
             RenderSystem.enableBlend();
@@ -115,12 +121,16 @@ public class SchematicProjectionRenderer {
 
             for (int copy = 0; copy < realRenderLimit; copy++) {
                 BlockPos copyOrigin = origin.offset(offsets.get(copy));
-                this.renderPlacement(minecraft, poseStack, bufferSource, copyOrigin, entry.info());
+                this.renderPlacement(minecraft, poseStack, bufferSource, copyOrigin, entry.info(), occupiedBlocks, occupiedBlockSet);
             }
 
             bufferSource.endBatch();
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
             RenderSystem.disableBlend();
+
+            for (BlockPos occupiedBlock : occupiedBlocks) {
+                this.renderOccupiedBlockMarker(poseStack, occupiedBlock);
+            }
         }
 
         for (BlockPos offset : offsets) {
@@ -165,7 +175,7 @@ public class SchematicProjectionRenderer {
         return copies;
     }
 
-    private void renderPlacement(Minecraft minecraft, PoseStack poseStack, MultiBufferSource bufferSource, BlockPos origin, LitematicaSchematicInfo info) {
+    private void renderPlacement(Minecraft minecraft, PoseStack poseStack, MultiBufferSource bufferSource, BlockPos origin, LitematicaSchematicInfo info, List<BlockPos> occupiedBlocks, Set<BlockPos> occupiedBlockSet) {
         int rendered = 0;
 
         for (LitematicaSchematicInfo.Region region : info.regions()) {
@@ -178,6 +188,15 @@ public class SchematicProjectionRenderer {
 
                 BlockPos pos = origin.offset(SchematicPlacementState.transformBlockOffset(region.position(), block.pos(), region.size()));
                 BlockState state = SchematicPlacementState.transformState(block.state());
+
+                if (!minecraft.level.getBlockState(pos).isAir()) {
+                    if (occupiedBlocks.size() < MAX_RENDERED_BOXES && occupiedBlockSet.add(pos)) {
+                        occupiedBlocks.add(pos);
+                    }
+
+                    continue;
+                }
+
                 this.renderBlock(minecraft, poseStack, bufferSource, pos, state);
             }
 
@@ -196,6 +215,18 @@ public class SchematicProjectionRenderer {
         poseStack.translate(pos.getX(), pos.getY(), pos.getZ());
         minecraft.getBlockRenderer().renderSingleBlock(state, poseStack, bufferSource, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, RenderType.translucent());
         poseStack.popPose();
+    }
+
+    private void renderOccupiedBlockMarker(PoseStack poseStack, BlockPos pos) {
+        double minX = pos.getX() - OCCUPIED_MARKER_EPSILON;
+        double minY = pos.getY() - OCCUPIED_MARKER_EPSILON;
+        double minZ = pos.getZ() - OCCUPIED_MARKER_EPSILON;
+        double maxX = pos.getX() + 1.0D + OCCUPIED_MARKER_EPSILON;
+        double maxY = pos.getY() + 1.0D + OCCUPIED_MARKER_EPSILON;
+        double maxZ = pos.getZ() + 1.0D + OCCUPIED_MARKER_EPSILON;
+
+        this.renderFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, OCCUPIED_FILL_COLOR);
+        this.renderLineBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, OCCUPIED_LINE_COLOR);
     }
 
     private Bounds findPlacementBounds(BlockPos origin, LitematicaSchematicInfo info) {

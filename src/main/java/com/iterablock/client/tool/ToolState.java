@@ -11,14 +11,12 @@ import com.iterablock.client.config.BuilderHelperClientConfig;
 import com.iterablock.client.litematica.LitematicaSchematicInfo;
 import com.iterablock.client.template.LoadedLitematicManager;
 import com.iterablock.common.PlacementReplaceMode;
-import com.iterablock.network.IteraBlockNetwork.PlaceSchematicPayload;
-import com.iterablock.network.IteraBlockNetwork.PlacedBlock;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.block.state.BlockState;
@@ -26,10 +24,9 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.neoforged.neoforge.network.PacketDistributor;
 
 public final class ToolState {
-    private static final int PLACE_PACKET_BATCH_SIZE = 8192;
+    private static final int PLACE_COMMAND_BATCH_SIZE = 256;
     private static final Path TEMPORARY_AREA_PATH = Path.of(".iterablock-memory", "temporary-area.litematic").toAbsolutePath().normalize();
     private static final Random RANDOM = new Random();
     private static ToolMode mode = ToolMode.AREA_COPY_PASTE;
@@ -317,12 +314,11 @@ public final class ToolState {
         }
 
         List<PlacedBlock> blocks = new java.util.ArrayList<>();
-        int stateId = Block.getId(state);
         int precision = BuilderHelperClientConfig.getBezierPlacementPrecision();
         int width = BuilderHelperClientConfig.getBezierPlacementWidth();
 
         for (BlockPos pos : BezierCurveState.getCurveBlocks(precision, width)) {
-            blocks.add(new PlacedBlock(pos, stateId));
+            blocks.add(new PlacedBlock(pos, state));
         }
 
         if (blocks.isEmpty()) {
@@ -546,21 +542,28 @@ public final class ToolState {
                 }
 
                 BlockPos pos = origin.offset(transformBlockOffset(region.position(), block.pos(), region.size(), rotationSteps));
-                collector.accept(new PlacedBlock(pos, Block.getId(state)));
+                collector.accept(new PlacedBlock(pos, state));
             }
         }
     }
 
     private static void sendPlacedBlocks(List<PlacedBlock> blocks, PlacementReplaceMode replaceMode) {
-        for (int start = 0; start < blocks.size(); start += PLACE_PACKET_BATCH_SIZE) {
-            int end = Math.min(start + PLACE_PACKET_BATCH_SIZE, blocks.size());
-            PacketDistributor.sendToServer(new PlaceSchematicPayload(blocks.subList(start, end), replaceMode.id()));
+        LocalPlayer player = Minecraft.getInstance().player;
+
+        if (player == null || Minecraft.getInstance().getConnection() == null) {
+            return;
+        }
+
+        CommandFeedbackSilencer.getInstance().expectPlacementFeedback(blocks.size());
+
+        for (PlacedBlock block : blocks) {
+            player.connection.sendCommand(toSetBlockCommand(block, replaceMode));
         }
     }
 
     private static final class PlacementBatcher implements Consumer<PlacedBlock> {
         private final PlacementReplaceMode replaceMode;
-        private final List<PlacedBlock> buffer = new ArrayList<>(PLACE_PACKET_BATCH_SIZE);
+        private final List<PlacedBlock> buffer = new ArrayList<>(PLACE_COMMAND_BATCH_SIZE);
         private int totalSent;
 
         private PlacementBatcher(PlacementReplaceMode replaceMode) {
@@ -571,7 +574,7 @@ public final class ToolState {
         public void accept(PlacedBlock block) {
             this.buffer.add(block);
 
-            if (this.buffer.size() >= PLACE_PACKET_BATCH_SIZE) {
+            if (this.buffer.size() >= PLACE_COMMAND_BATCH_SIZE) {
                 this.flush();
             }
         }
@@ -581,7 +584,7 @@ public final class ToolState {
                 return;
             }
 
-            PacketDistributor.sendToServer(new PlaceSchematicPayload(List.copyOf(this.buffer), this.replaceMode.id()));
+            sendPlacedBlocks(this.buffer, this.replaceMode);
             this.totalSent += this.buffer.size();
             this.buffer.clear();
         }
@@ -593,6 +596,19 @@ public final class ToolState {
         private int totalSent() {
             return this.totalSent;
         }
+    }
+
+    private static String toSetBlockCommand(PlacedBlock block, PlacementReplaceMode replaceMode) {
+        BlockPos pos = block.pos();
+        String setBlockCommand = "setblock " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + " " + BlockStateParser.serialize(block.state()) + " replace";
+
+        return switch (replaceMode) {
+            case REPLACE_ALL -> setBlockCommand;
+            case ONLY_REPLACE_AIR -> "execute if block " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + " air run " + setBlockCommand;
+        };
+    }
+
+    private record PlacedBlock(BlockPos pos, BlockState state) {
     }
 
     private static BlockPos transformBlockOffset(BlockPos regionPosition, BlockPos localPos, BlockPos regionSize, int rotationSteps) {
