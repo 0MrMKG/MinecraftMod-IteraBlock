@@ -17,7 +17,6 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -31,6 +30,7 @@ public final class ToolState {
     private static final Random RANDOM = new Random();
     private static ToolMode mode = ToolMode.AREA_COPY_PASTE;
     private static String lastAction = "";
+    private static boolean placeSchematicImmediately;
 
     private ToolState() {
     }
@@ -57,6 +57,14 @@ public final class ToolState {
 
     public static void cycleMode(boolean forward) {
         setMode(mode.cycle(forward));
+    }
+
+    public static boolean toggleSchematicPlacementExecutionMode() {
+        placeSchematicImmediately = !placeSchematicImmediately;
+        setLastAction(Lang.tr(placeSchematicImmediately
+                ? "iterablock.tool.action.schematic_place_mode_immediate"
+                : "iterablock.tool.action.schematic_place_mode_execute"));
+        return true;
     }
 
     public static void adjustLinearArray(Minecraft minecraft, int amount) {
@@ -369,6 +377,21 @@ public final class ToolState {
         return true;
     }
 
+    public static boolean mirrorCurrentProjection(Minecraft minecraft) {
+        if (!SchematicPlacementState.hasPlacement()) {
+            setLastAction(Lang.tr("iterablock.tool.action.no_projection"));
+            return true;
+        }
+
+        if (minecraft.player == null) {
+            return false;
+        }
+
+        SchematicPlacementState.MirrorAxis axis = SchematicPlacementState.mirrorByLook(minecraft.player.getLookAngle());
+        setLastAction(Lang.tr("iterablock.tool.action.mirrored_projection", getMirrorAxisName(axis)));
+        return true;
+    }
+
     private static void handleSchematicPlacementSecondary(Minecraft minecraft) {
         if (ClientToolState.currentLitematic == null) {
             setLastAction(Lang.tr("iterablock.tool.action.no_litematic"));
@@ -377,6 +400,12 @@ public final class ToolState {
 
         BlockPos origin = getPlacementOrigin(minecraft);
         SchematicPlacementState.place(ClientToolState.currentLitematic, origin);
+
+        if (mode == ToolMode.SCHEMATIC_PLACEMENT && placeSchematicImmediately) {
+            placeCurrentProjection(minecraft);
+            return;
+        }
+
         setLastAction(withCurrentLitematic(Lang.tr("iterablock.tool.action.placement_projected")));
     }
 
@@ -458,7 +487,7 @@ public final class ToolState {
 
         for (BlockPos offset : offsets) {
             BlockPos copyOrigin = origin.offset(offset);
-            collectBlocksForOrigin(copyOrigin, info, collector, SchematicPlacementState.getRotationSteps());
+            collectBlocksForOrigin(copyOrigin, info, collector, SchematicPlacementState.getRotationSteps(), SchematicPlacementState.getMirrorAxis());
         }
     }
 
@@ -481,7 +510,7 @@ public final class ToolState {
             int yOffset = minHeight + RANDOM.nextInt(Math.max(1, maxHeight - minHeight + 1));
             int rotationSteps = RANDOM.nextInt(100) < rotationChance ? 1 + RANDOM.nextInt(3) : 0;
             BlockPos origin = playerPos.offset(xOffset, yOffset, zOffset);
-            collectBlocksForOrigin(origin, info, collector, rotationSteps);
+            collectBlocksForOrigin(origin, info, collector, rotationSteps, SchematicPlacementState.getMirrorAxis());
         }
     }
 
@@ -523,25 +552,29 @@ public final class ToolState {
     }
 
     private static void collectBlocksForOrigin(BlockPos origin, LitematicaSchematicInfo info, List<PlacedBlock> placed) {
-        collectBlocksForOrigin(origin, info, placed, SchematicPlacementState.getRotationSteps());
+        collectBlocksForOrigin(origin, info, placed::add, SchematicPlacementState.getRotationSteps(), SchematicPlacementState.getMirrorAxis());
     }
 
     private static void collectBlocksForOrigin(BlockPos origin, LitematicaSchematicInfo info, List<PlacedBlock> placed, int rotationSteps) {
-        collectBlocksForOrigin(origin, info, placed::add, rotationSteps);
+        collectBlocksForOrigin(origin, info, placed::add, rotationSteps, SchematicPlacementState.getMirrorAxis());
     }
 
     private static void collectBlocksForOrigin(BlockPos origin, LitematicaSchematicInfo info, Consumer<PlacedBlock> collector, int rotationSteps) {
+        collectBlocksForOrigin(origin, info, collector, rotationSteps, SchematicPlacementState.getMirrorAxis());
+    }
+
+    private static void collectBlocksForOrigin(BlockPos origin, LitematicaSchematicInfo info, Consumer<PlacedBlock> collector, int rotationSteps, SchematicPlacementState.MirrorAxis mirrorAxis) {
         for (LitematicaSchematicInfo.Region region : info.regions()) {
             List<LitematicaSchematicInfo.BlockSample> blocks = region.blocks();
 
             for (LitematicaSchematicInfo.BlockSample block : blocks) {
-                BlockState state = transformState(block.state(), rotationSteps);
+                BlockState state = transformState(block.state(), rotationSteps, mirrorAxis);
 
                 if (state.isAir()) {
                     continue;
                 }
 
-                BlockPos pos = origin.offset(transformBlockOffset(region.position(), block.pos(), region.size(), rotationSteps));
+                BlockPos pos = origin.offset(transformBlockOffset(region.position(), block.pos(), region.size(), rotationSteps, mirrorAxis));
                 collector.accept(new PlacedBlock(pos, state));
             }
         }
@@ -612,35 +645,27 @@ public final class ToolState {
     }
 
     private static BlockPos transformBlockOffset(BlockPos regionPosition, BlockPos localPos, BlockPos regionSize, int rotationSteps) {
-        BlockPos oriented = orientLocalPos(localPos, regionSize);
-        BlockPos offset = regionPosition.offset(oriented);
-        int x = offset.getX();
-        int y = offset.getY();
-        int z = offset.getZ();
+        return transformBlockOffset(regionPosition, localPos, regionSize, rotationSteps, SchematicPlacementState.MirrorAxis.NONE);
+    }
 
-        return switch (rotationSteps & 3) {
-            case 1 -> new BlockPos(-z, y, x);
-            case 2 -> new BlockPos(-x, y, -z);
-            case 3 -> new BlockPos(z, y, -x);
-            default -> offset;
-        };
+    private static BlockPos transformBlockOffset(BlockPos regionPosition, BlockPos localPos, BlockPos regionSize, int rotationSteps, SchematicPlacementState.MirrorAxis mirrorAxis) {
+        return SchematicPlacementState.transformBlockOffset(regionPosition, localPos, regionSize, rotationSteps, mirrorAxis);
     }
 
     private static BlockState transformState(BlockState state, int rotationSteps) {
-        BlockState rotated = state;
-
-        for (int i = 0; i < (rotationSteps & 3); i++) {
-            rotated = rotated.rotate(Rotation.CLOCKWISE_90);
-        }
-
-        return rotated;
+        return transformState(state, rotationSteps, SchematicPlacementState.MirrorAxis.NONE);
     }
 
-    private static BlockPos orientLocalPos(BlockPos localPos, BlockPos regionSize) {
-        int x = regionSize.getX() < 0 ? -localPos.getX() : localPos.getX();
-        int y = regionSize.getY() < 0 ? -localPos.getY() : localPos.getY();
-        int z = regionSize.getZ() < 0 ? -localPos.getZ() : localPos.getZ();
-        return new BlockPos(x, y, z);
+    private static BlockState transformState(BlockState state, int rotationSteps, SchematicPlacementState.MirrorAxis mirrorAxis) {
+        return SchematicPlacementState.transformState(state, rotationSteps, mirrorAxis);
+    }
+
+    private static String getMirrorAxisName(SchematicPlacementState.MirrorAxis axis) {
+        return switch (axis) {
+            case X -> "X";
+            case Z -> "Z";
+            case NONE -> Lang.tr("iterablock.tool.mirror.none");
+        };
     }
 
     private static String withCurrentLitematic(String action) {

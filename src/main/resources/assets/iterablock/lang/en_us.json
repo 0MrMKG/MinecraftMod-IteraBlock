@@ -212,5 +212,11 @@
   "iterablock.tool.bezier.sample_points": "Sample Points: %s",
   "iterablock.tool.bezier.placement_mode": "Placement Mode: %s",
   "iterablock.tool.bezier.placement_mode.nbt": "Place NBT Mode",
-  "iterablock.tool.bezier.placement_mode.block": "Place Block Mode"
+  "iterablock.tool.bezier.placement_mode.block": "Place Block Mode",
+  "key.iterablock.mirror_projection": "Mirror Current Projection",
+  "iterablock.gui.settings.keybind.mirror_projection": "Mirror Current Projection",
+  "iterablock.tool.action.mirrored_projection": "Schematic mirrored: %s",
+  "iterablock.tool.mirror.none": "none",
+  "iterablock.tool.action.schematic_place_mode_immediate": "Schematic placement: right click places immediately",
+  "iterablock.tool.action.schematic_place_mode_execute": "Schematic placement: press Y to execute"
 }

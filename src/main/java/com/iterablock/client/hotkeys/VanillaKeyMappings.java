@@ -16,6 +16,7 @@ public final class VanillaKeyMappings {
     public static final KeyMapping OPEN_MAIN_MENU = new KeyMapping("key.iterablock.open_main_menu", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_O, CATEGORY);
     public static final KeyMapping PLACE_PROJECTION = new KeyMapping("key.iterablock.place_projection", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_Y, CATEGORY);
     public static final KeyMapping ROTATE_PROJECTION = new KeyMapping("key.iterablock.rotate_projection", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, CATEGORY);
+    public static final KeyMapping MIRROR_PROJECTION = new KeyMapping("key.iterablock.mirror_projection", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, CATEGORY);
 
     private VanillaKeyMappings() {
     }
@@ -26,6 +27,7 @@ public final class VanillaKeyMappings {
         event.register(OPEN_MAIN_MENU);
         event.register(PLACE_PROJECTION);
         event.register(ROTATE_PROJECTION);
+        event.register(MIRROR_PROJECTION);
     }
 
     public static boolean matchesOpenFiles(int keyCode, int scanCode) {
@@ -46,6 +48,10 @@ public final class VanillaKeyMappings {
 
     public static boolean matchesRotateProjection(int keyCode, int scanCode) {
         return ROTATE_PROJECTION.matches(keyCode, scanCode);
+    }
+
+    public static boolean matchesMirrorProjection(int keyCode, int scanCode) {
+        return MIRROR_PROJECTION.matches(keyCode, scanCode);
     }
 
     public static boolean isOpenRadialDown() {
@@ -75,6 +81,7 @@ public final class VanillaKeyMappings {
             case "openMainMenuKey" -> setKey(key, GLFW.GLFW_KEY_O);
             case "placeProjectionKey" -> setKey(key, GLFW.GLFW_KEY_Y);
             case "rotateProjectionKey" -> setKey(key, GLFW.GLFW_KEY_R);
+            case "mirrorProjectionKey" -> setKey(key, GLFW.GLFW_KEY_G);
             default -> {
             }
         }
@@ -87,6 +94,7 @@ public final class VanillaKeyMappings {
             case "openMainMenuKey" -> OPEN_MAIN_MENU;
             case "placeProjectionKey" -> PLACE_PROJECTION;
             case "rotateProjectionKey" -> ROTATE_PROJECTION;
+            case "mirrorProjectionKey" -> MIRROR_PROJECTION;
             default -> null;
         };
     }

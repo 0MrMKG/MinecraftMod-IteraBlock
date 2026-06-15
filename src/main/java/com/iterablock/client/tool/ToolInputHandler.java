@@ -72,6 +72,10 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return ToolState.copyAreaSelectionToLoaded(minecraft);
         }
 
+        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_V && ToolState.getMode() == ToolMode.SCHEMATIC_PLACEMENT) {
+            return ToolState.toggleSchematicPlacementExecutionMode();
+        }
+
         if (minecraft.options.keyAttack.matches(keyCode, scanCode)) {
             return ToolState.handlePrimaryAction(minecraft);
         }
@@ -86,6 +90,10 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
 
         if (VanillaKeyMappings.matchesRotateProjection(keyCode, scanCode)) {
             return ToolState.rotateCurrentProjection();
+        }
+
+        if (VanillaKeyMappings.matchesMirrorProjection(keyCode, scanCode) || BuilderHelperClientConfig.matchesMirrorProjectionKey(keyCode)) {
+            return ToolState.mirrorCurrentProjection(minecraft);
         }
 
         return false;

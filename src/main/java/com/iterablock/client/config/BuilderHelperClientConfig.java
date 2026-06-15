@@ -52,6 +52,7 @@ public final class BuilderHelperClientConfig {
     private static final String OPEN_MAIN_MENU_KEY = "openMainMenuKey";
     private static final String PLACE_PROJECTION_KEY = "placeProjectionKey";
     private static final String ROTATE_PROJECTION_KEY = "rotateProjectionKey";
+    private static final String MIRROR_PROJECTION_KEY = "mirrorProjectionKey";
     private static final String PLACEMENT_REPLACE_MODE_KEY = "placementReplaceMode";
     private static final String RANDOM_PLACEMENT_ROTATION_KEY = "randomPlacementRotation";
     private static final String RANDOM_PLACEMENT_RADIUS_KEY = "randomPlacementRadius";
@@ -168,6 +169,10 @@ public final class BuilderHelperClientConfig {
 
     public static boolean matchesRotateProjectionKey(int keyCode) {
         return keyCode == getKeyCode(ROTATE_PROJECTION_KEY, GLFW.GLFW_KEY_R);
+    }
+
+    public static boolean matchesMirrorProjectionKey(int keyCode) {
+        return keyCode == getKeyCode(MIRROR_PROJECTION_KEY, GLFW.GLFW_KEY_G);
     }
 
     public static boolean matchesOpenFilesKey(int keyCode) {

@@ -7,6 +7,7 @@ import com.iterablock.client.template.LoadedLitematicManager;
 import com.iterablock.client.litematica.LitematicaSchematicInfo;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
@@ -17,6 +18,7 @@ public final class SchematicPlacementState {
     private static LoadedLitematicManager.Entry entry;
     private static BlockPos origin;
     private static int rotationSteps;
+    private static MirrorAxis mirrorAxis = MirrorAxis.NONE;
     private static int linearArrayX;
     private static int linearArrayY;
     private static int linearArrayZ;
@@ -52,10 +54,24 @@ public final class SchematicPlacementState {
         return rotationSteps;
     }
 
+    public static MirrorAxis getMirrorAxis() {
+        return mirrorAxis;
+    }
+
     public static void rotateClockwise() {
         if (hasPlacement()) {
             rotationSteps = (rotationSteps + 1) & 3;
         }
+    }
+
+    public static MirrorAxis mirrorByLook(Vec3 lookDirection) {
+        if (!hasPlacement()) {
+            return mirrorAxis;
+        }
+
+        MirrorAxis axis = Math.abs(lookDirection.x) >= Math.abs(lookDirection.z) ? MirrorAxis.X : MirrorAxis.Z;
+        mirrorAxis = mirrorAxis == axis ? MirrorAxis.NONE : axis;
+        return mirrorAxis;
     }
 
     public static void adjustLinearArray(Vec3 lookDirection, int amount) {
@@ -265,22 +281,36 @@ public final class SchematicPlacementState {
     }
 
     public static BlockPos transformBlockOffset(BlockPos regionPosition, BlockPos localPos, BlockPos regionSize) {
+        return transformBlockOffset(regionPosition, localPos, regionSize, rotationSteps, mirrorAxis);
+    }
+
+    public static BlockPos transformBlockOffset(BlockPos regionPosition, BlockPos localPos, BlockPos regionSize, int rotationSteps, MirrorAxis mirrorAxis) {
         BlockPos oriented = orientLocalPos(localPos, regionSize);
         BlockPos offset = regionPosition.offset(oriented);
-        int x = offset.getX();
+        int x = mirrorAxis == MirrorAxis.X ? -offset.getX() : offset.getX();
         int y = offset.getY();
-        int z = offset.getZ();
+        int z = mirrorAxis == MirrorAxis.Z ? -offset.getZ() : offset.getZ();
 
         return switch (rotationSteps & 3) {
             case 1 -> new BlockPos(-z, y, x);
             case 2 -> new BlockPos(-x, y, -z);
             case 3 -> new BlockPos(z, y, -x);
-            default -> offset;
+            default -> new BlockPos(x, y, z);
         };
     }
 
     public static BlockState transformState(BlockState state) {
+        return transformState(state, rotationSteps, mirrorAxis);
+    }
+
+    public static BlockState transformState(BlockState state, int rotationSteps, MirrorAxis mirrorAxis) {
         BlockState rotated = state;
+
+        if (mirrorAxis == MirrorAxis.X) {
+            rotated = rotated.mirror(Mirror.FRONT_BACK);
+        } else if (mirrorAxis == MirrorAxis.Z) {
+            rotated = rotated.mirror(Mirror.LEFT_RIGHT);
+        }
 
         for (int i = 0; i < (rotationSteps & 3); i++) {
             rotated = rotated.rotate(Rotation.CLOCKWISE_90);
@@ -299,6 +329,7 @@ public final class SchematicPlacementState {
         entry = null;
         origin = null;
         rotationSteps = 0;
+        mirrorAxis = MirrorAxis.NONE;
         resetArrayCounts();
     }
 
@@ -345,6 +376,12 @@ public final class SchematicPlacementState {
     public enum Axis {
         X,
         Y,
+        Z
+    }
+
+    public enum MirrorAxis {
+        NONE,
+        X,
         Z
     }
 }
