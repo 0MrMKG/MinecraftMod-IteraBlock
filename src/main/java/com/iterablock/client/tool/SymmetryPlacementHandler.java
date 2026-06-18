@@ -14,6 +14,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.LeftClickBlock.Action;
 
 public final class SymmetryPlacementHandler {
     private static final SymmetryPlacementHandler INSTANCE = new SymmetryPlacementHandler();
@@ -71,6 +72,40 @@ public final class SymmetryPlacementHandler {
         }
     }
 
+    @SubscribeEvent
+    public void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (!event.getLevel().isClientSide()
+                || event.getAction() != Action.START
+                || minecraft.screen != null
+                || minecraft.player == null
+                || minecraft.getConnection() == null
+                || event.getEntity() != minecraft.player
+                || ToolState.getMode() != ToolMode.SYMMETRY_PLACEMENT
+                || !SymmetryPlacementState.isLocked()) {
+            return;
+        }
+
+        BlockPos brokenPos = event.getPos();
+
+        if (!SymmetryPlacementState.contains(brokenPos)) {
+            return;
+        }
+
+        List<SymmetryPlacementState.MirrorPlacement> placements = SymmetryPlacementState.getMirrorPlacements(brokenPos);
+
+        if (placements.isEmpty()) {
+            return;
+        }
+
+        CommandFeedbackSilencer.getInstance().expectPlacementFeedback(placements.size());
+
+        for (SymmetryPlacementState.MirrorPlacement placement : placements) {
+            minecraft.player.connection.sendCommand(toClearBlockCommand(placement.pos()));
+        }
+    }
+
     private static BlockState mirrorState(BlockState state, SymmetryPlacementState.MirrorPlacement placement) {
         BlockState mirrored = state;
 
@@ -87,5 +122,9 @@ public final class SymmetryPlacementHandler {
 
     private static String toSetBlockCommand(BlockPos pos, BlockState state) {
         return "setblock " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + " " + BlockStateParser.serialize(state) + " replace";
+    }
+
+    private static String toClearBlockCommand(BlockPos pos) {
+        return "setblock " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + " air replace";
     }
 }

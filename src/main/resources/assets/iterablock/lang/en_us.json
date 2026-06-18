@@ -227,8 +227,14 @@
   "iterablock.tool.action.symmetry_locked": "Symmetry area locked",
   "iterablock.tool.action.symmetry_cleared": "Symmetry area cleared",
   "iterablock.tool.action.symmetry_adjusted": "Symmetry area: radius %s, height %s",
+  "iterablock.tool.action.symmetry_kind": "Symmetry kind: %s",
+  "iterablock.tool.action.symmetry_parity": "Symmetry parity: %s",
   "iterablock.tool.symmetry.empty": "Symmetry: right click to select center",
-  "iterablock.tool.symmetry.params": "Symmetry: center %s,%s,%s; radius %s; height %s; %s",
+  "iterablock.tool.symmetry.params": "Symmetry: %s / %s; center %s,%s,%s; radius %s; height %s; %s",
   "iterablock.tool.symmetry.locked": "locked",
-  "iterablock.tool.symmetry.editing": "editing"
+  "iterablock.tool.symmetry.editing": "editing",
+  "iterablock.tool.symmetry.kind.center": "Center",
+  "iterablock.tool.symmetry.kind.plane": "Plane",
+  "iterablock.tool.symmetry.parity.odd": "Odd",
+  "iterablock.tool.symmetry.parity.even": "Even"
 }

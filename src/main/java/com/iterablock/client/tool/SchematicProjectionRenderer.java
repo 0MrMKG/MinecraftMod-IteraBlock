@@ -51,8 +51,8 @@ public class SchematicProjectionRenderer {
     private static final int BEZIER_POINT_FILL_COLOR = 0x55F6D6A8;
     private static final int BEZIER_PREVIOUS_POINT_LINE_COLOR = 0xF0FF4A4A;
     private static final int BEZIER_PREVIOUS_POINT_FILL_COLOR = 0x44FF4A4A;
-    private static final int SYMMETRY_AREA_FILL_COLOR = 0x336FAF9A;
-    private static final int SYMMETRY_LOCKED_AREA_FILL_COLOR = 0x33FFFFFF;
+    private static final int SYMMETRY_AREA_FILL_COLOR = 0x0A6FAF9A;
+    private static final int SYMMETRY_LOCKED_AREA_FILL_COLOR = 0x0AFFFFFF;
     private static final int SYMMETRY_AREA_LINE_COLOR = 0xB0D6FFF0;
     private static final int SYMMETRY_LOCKED_LINE_COLOR = 0x99FFFFFF;
     private static final int SYMMETRY_CENTER_UNLOCKED_FILL_COLOR = 0x99BFE3D7;
@@ -343,19 +343,34 @@ public class SchematicProjectionRenderer {
             return;
         }
 
-        BlockPos center = SymmetryPlacementState.getCenter();
         SymmetryPlacementState.Bounds bounds = SymmetryPlacementState.getBounds();
 
         if (bounds != null) {
             int fillColor = SymmetryPlacementState.isLocked() ? SYMMETRY_LOCKED_AREA_FILL_COLOR : SYMMETRY_AREA_FILL_COLOR;
-            this.renderFilledBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), fillColor);
+            if ((fillColor >>> 24) > 0) {
+                this.renderDepthAwareFilledBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), fillColor);
+            }
             this.renderLineBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(),
                     SymmetryPlacementState.isLocked() ? SYMMETRY_LOCKED_LINE_COLOR : SYMMETRY_AREA_LINE_COLOR);
         }
 
         int centerFillColor = SymmetryPlacementState.isLocked() ? SYMMETRY_CENTER_LOCKED_FILL_COLOR : SYMMETRY_CENTER_UNLOCKED_FILL_COLOR;
-        this.renderFilledBox(poseStack, center.getX(), center.getY(), center.getZ(), center.getX() + 1, center.getY() + 1, center.getZ() + 1, centerFillColor);
-        this.renderLineBox(poseStack, center.getX(), center.getY(), center.getZ(), center.getX() + 1, center.getY() + 1, center.getZ() + 1, SYMMETRY_CENTER_LINE_COLOR);
+        SymmetryPlacementState.PlaneBounds planeBounds = SymmetryPlacementState.getPlaneMarkerBounds();
+
+        if (planeBounds != null) {
+            this.renderFilledBox(poseStack, planeBounds.minX(), planeBounds.minY(), planeBounds.minZ(), planeBounds.maxX(), planeBounds.maxY(), planeBounds.maxZ(), centerFillColor);
+            this.renderLineBox(poseStack, planeBounds.minX(), planeBounds.minY(), planeBounds.minZ(), planeBounds.maxX(), planeBounds.maxY(), planeBounds.maxZ(), SYMMETRY_CENTER_LINE_COLOR);
+        }
+
+        for (SymmetryPlacementState.PlaneBounds markerBounds : SymmetryPlacementState.getEvenCenterMarkerBounds()) {
+            this.renderFilledBox(poseStack, markerBounds.minX(), markerBounds.minY(), markerBounds.minZ(), markerBounds.maxX(), markerBounds.maxY(), markerBounds.maxZ(), centerFillColor);
+            this.renderLineBox(poseStack, markerBounds.minX(), markerBounds.minY(), markerBounds.minZ(), markerBounds.maxX(), markerBounds.maxY(), markerBounds.maxZ(), SYMMETRY_CENTER_LINE_COLOR);
+        }
+
+        for (BlockPos marker : SymmetryPlacementState.getCenterMarkerBlocks()) {
+            this.renderFilledBox(poseStack, marker.getX(), marker.getY(), marker.getZ(), marker.getX() + 1, marker.getY() + 1, marker.getZ() + 1, centerFillColor);
+            this.renderLineBox(poseStack, marker.getX(), marker.getY(), marker.getZ(), marker.getX() + 1, marker.getY() + 1, marker.getZ() + 1, SYMMETRY_CENTER_LINE_COLOR);
+        }
     }
 
     private void renderBezierCurve(Minecraft minecraft, PoseStack poseStack, Camera camera) {
@@ -400,10 +415,15 @@ public class SchematicProjectionRenderer {
     }
 
     private void renderFilledBox(PoseStack poseStack, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {
+        this.renderDepthAwareFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, color);
+    }
+
+    private void renderDepthAwareFilledBox(PoseStack poseStack, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableCull();
-        RenderSystem.disableDepthTest();
+        RenderSystem.enableDepthTest();
+        RenderSystem.depthMask(false);
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
         BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
@@ -415,7 +435,7 @@ public class SchematicProjectionRenderer {
         this.addQuad(buffer, poseStack, maxX, minY, minZ, maxX, maxY, minZ, maxX, maxY, maxZ, maxX, minY, maxZ, color);
         BufferUploader.drawWithShader(buffer.buildOrThrow());
 
-        RenderSystem.enableDepthTest();
+        RenderSystem.depthMask(true);
         RenderSystem.enableCull();
         RenderSystem.disableBlend();
     }

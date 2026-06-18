@@ -165,6 +165,8 @@ public class ToolHudRenderer implements IRenderer {
 
             net.minecraft.core.BlockPos center = SymmetryPlacementState.getCenter();
             return Lang.tr("iterablock.tool.symmetry.params",
+                    Lang.tr(SymmetryPlacementState.getKind().translationKey()),
+                    Lang.tr(SymmetryPlacementState.getParity().translationKey()),
                     center.getX(),
                     center.getY(),
                     center.getZ(),

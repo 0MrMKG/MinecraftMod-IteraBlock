@@ -68,6 +68,14 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return false;
         }
 
+        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C && ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {
+            return ToolState.toggleSymmetryKind();
+        }
+
+        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_V && ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {
+            return ToolState.toggleSymmetryParity();
+        }
+
         if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C && ToolState.getMode() == ToolMode.AREA_COPY_PASTE) {
             return ToolState.copyAreaSelectionToLoaded(minecraft);
         }

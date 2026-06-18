@@ -227,8 +227,14 @@
   "iterablock.tool.action.symmetry_locked": "对称区域已锁定",
   "iterablock.tool.action.symmetry_cleared": "对称区域已清除",
   "iterablock.tool.action.symmetry_adjusted": "对称区域：半径 %s，高度 %s",
+  "iterablock.tool.action.symmetry_kind": "对称类型：%s",
+  "iterablock.tool.action.symmetry_parity": "对称奇偶：%s",
   "iterablock.tool.symmetry.empty": "对称：右键选择中心点",
-  "iterablock.tool.symmetry.params": "对称：中心 %s,%s,%s；半径 %s；高度 %s；%s",
+  "iterablock.tool.symmetry.params": "对称：%s / %s；中心 %s,%s,%s；半径 %s；高度 %s；%s",
   "iterablock.tool.symmetry.locked": "已锁定",
-  "iterablock.tool.symmetry.editing": "调整中"
+  "iterablock.tool.symmetry.editing": "调整中",
+  "iterablock.tool.symmetry.kind.center": "中心对称",
+  "iterablock.tool.symmetry.kind.plane": "平面对称",
+  "iterablock.tool.symmetry.parity.odd": "奇数",
+  "iterablock.tool.symmetry.parity.even": "偶数"
 }

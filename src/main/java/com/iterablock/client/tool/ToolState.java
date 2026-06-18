@@ -150,6 +150,26 @@ public final class ToolState {
         return true;
     }
 
+    public static boolean toggleSymmetryKind() {
+        if (mode != ToolMode.SYMMETRY_PLACEMENT) {
+            return false;
+        }
+
+        SymmetryPlacementState.Kind symmetryKind = SymmetryPlacementState.toggleKind();
+        setLastAction(Lang.tr("iterablock.tool.action.symmetry_kind", Lang.tr(symmetryKind.translationKey())));
+        return true;
+    }
+
+    public static boolean toggleSymmetryParity() {
+        if (mode != ToolMode.SYMMETRY_PLACEMENT) {
+            return false;
+        }
+
+        SymmetryPlacementState.Parity symmetryParity = SymmetryPlacementState.toggleParity();
+        setLastAction(Lang.tr("iterablock.tool.action.symmetry_parity", Lang.tr(symmetryParity.translationKey())));
+        return true;
+    }
+
     public static boolean copyAreaSelectionToLoaded(Minecraft minecraft) {
         if (mode != ToolMode.AREA_COPY_PASTE || minecraft.level == null) {
             return false;
@@ -491,7 +511,7 @@ public final class ToolState {
         }
 
         BlockPos point = getTargetBlockPos(minecraft);
-        SymmetryPlacementState.setCenter(point);
+        SymmetryPlacementState.setCenter(point, minecraft.player.getLookAngle());
         setLastAction(Lang.tr("iterablock.tool.action.symmetry_center", point.getX(), point.getY(), point.getZ()));
     }
 
