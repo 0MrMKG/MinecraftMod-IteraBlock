@@ -51,6 +51,13 @@ public class SchematicProjectionRenderer {
     private static final int BEZIER_POINT_FILL_COLOR = 0x55F6D6A8;
     private static final int BEZIER_PREVIOUS_POINT_LINE_COLOR = 0xF0FF4A4A;
     private static final int BEZIER_PREVIOUS_POINT_FILL_COLOR = 0x44FF4A4A;
+    private static final int SYMMETRY_AREA_FILL_COLOR = 0x336FAF9A;
+    private static final int SYMMETRY_LOCKED_AREA_FILL_COLOR = 0x33FFFFFF;
+    private static final int SYMMETRY_AREA_LINE_COLOR = 0xB0D6FFF0;
+    private static final int SYMMETRY_LOCKED_LINE_COLOR = 0x99FFFFFF;
+    private static final int SYMMETRY_CENTER_UNLOCKED_FILL_COLOR = 0x99BFE3D7;
+    private static final int SYMMETRY_CENTER_LOCKED_FILL_COLOR = 0xB3C84040;
+    private static final int SYMMETRY_CENTER_LINE_COLOR = 0xF0FFFFFF;
     private static final double OCCUPIED_MARKER_EPSILON = 0.003D;
 
     private SchematicProjectionRenderer() {
@@ -78,7 +85,9 @@ public class SchematicProjectionRenderer {
 
         poseStack.pushPose();
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+        ToolState.updateSchematicPlacementPreview(minecraft);
         this.renderAreaSelection(poseStack);
+        this.renderSymmetryPlacement(poseStack);
         this.renderActivePlacement(minecraft, poseStack);
         this.renderPlacementTarget(poseStack);
         this.renderBezierCurve(minecraft, poseStack, camera);
@@ -327,6 +336,26 @@ public class SchematicProjectionRenderer {
     private void renderAreaPointBox(PoseStack poseStack, BlockPos point, int fillColor, int lineColor) {
         this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, fillColor);
         this.renderLineBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, lineColor);
+    }
+
+    private void renderSymmetryPlacement(PoseStack poseStack) {
+        if (ToolState.getMode() != ToolMode.SYMMETRY_PLACEMENT || !SymmetryPlacementState.hasCenter()) {
+            return;
+        }
+
+        BlockPos center = SymmetryPlacementState.getCenter();
+        SymmetryPlacementState.Bounds bounds = SymmetryPlacementState.getBounds();
+
+        if (bounds != null) {
+            int fillColor = SymmetryPlacementState.isLocked() ? SYMMETRY_LOCKED_AREA_FILL_COLOR : SYMMETRY_AREA_FILL_COLOR;
+            this.renderFilledBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), fillColor);
+            this.renderLineBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(),
+                    SymmetryPlacementState.isLocked() ? SYMMETRY_LOCKED_LINE_COLOR : SYMMETRY_AREA_LINE_COLOR);
+        }
+
+        int centerFillColor = SymmetryPlacementState.isLocked() ? SYMMETRY_CENTER_LOCKED_FILL_COLOR : SYMMETRY_CENTER_UNLOCKED_FILL_COLOR;
+        this.renderFilledBox(poseStack, center.getX(), center.getY(), center.getZ(), center.getX() + 1, center.getY() + 1, center.getZ() + 1, centerFillColor);
+        this.renderLineBox(poseStack, center.getX(), center.getY(), center.getZ(), center.getX() + 1, center.getY() + 1, center.getZ() + 1, SYMMETRY_CENTER_LINE_COLOR);
     }
 
     private void renderBezierCurve(Minecraft minecraft, PoseStack poseStack, Camera camera) {

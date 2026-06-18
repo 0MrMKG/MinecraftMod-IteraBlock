@@ -8,7 +8,8 @@ public enum ToolMode {
     LINEAR_ARRAY("iterablock.tool.mode.linear_array", "iterablock.tool.mode.linear_array.description", true),
     VOLUME_ARRAY("iterablock.tool.mode.volume_array", "iterablock.tool.mode.volume_array.description", true),
     RANDOM_SCHEMATIC_PLACEMENT("iterablock.tool.mode.random_schematic_placement", "iterablock.tool.mode.random_schematic_placement.description", true),
-    BEZIER_CURVE_GENERATION("iterablock.tool.mode.bezier_curve_generation", "iterablock.tool.mode.bezier_curve_generation.description", false);
+    BEZIER_CURVE_GENERATION("iterablock.tool.mode.bezier_curve_generation", "iterablock.tool.mode.bezier_curve_generation.description", false),
+    SYMMETRY_PLACEMENT("iterablock.tool.mode.symmetry_placement", "iterablock.tool.mode.symmetry_placement.description", false);
 
     private final String displayNameKey;
     private final String descriptionKey;

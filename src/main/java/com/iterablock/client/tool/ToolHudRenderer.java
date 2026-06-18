@@ -25,7 +25,7 @@ public class ToolHudRenderer implements IRenderer {
 
         ToolMode mode = ToolState.getMode();
 
-        if (minecraft.options.hideGui || minecraft.screen != null || minecraft.player == null || (!ToolState.hasToolItem(minecraft.player) && mode != ToolMode.BEZIER_CURVE_GENERATION)) {
+        if (minecraft.options.hideGui || minecraft.screen != null || minecraft.player == null || (!ToolState.hasToolItem(minecraft.player) && mode != ToolMode.BEZIER_CURVE_GENERATION && mode != ToolMode.SYMMETRY_PLACEMENT)) {
             return;
         }
 
@@ -56,7 +56,7 @@ public class ToolHudRenderer implements IRenderer {
         guiGraphics.fill(x - 4, y - 4, x + width, y + height, 0x8A071018);
         guiGraphics.fill(x - 4, y - 4, x + width, y - 3, 0xB64EAFC5);
         guiGraphics.drawString(font, title, x, y, 0xD6F4FF, true);
-        guiGraphics.drawString(font, modeText, x, y + 12, 0xFFFFFF, true);
+        guiGraphics.drawString(font, modeText, x, y + 12, getModeTextColor(mode), true);
         guiGraphics.drawString(font, litematicText, x, y + 24, 0xFFFFFF, true);
 
         int nextLineY = y + 36;
@@ -97,6 +97,22 @@ public class ToolHudRenderer implements IRenderer {
         return Lang.tr("iterablock.tool.bezier.placement_mode", Lang.tr(modeKey));
     }
 
+    private static int getModeTextColor(ToolMode mode) {
+        if (mode == ToolMode.SCHEMATIC_PLACEMENT) {
+            return 0x9AF5B0;
+        }
+
+        if (mode == ToolMode.LINEAR_ARRAY
+                || mode == ToolMode.VOLUME_ARRAY
+                || mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT
+                || mode == ToolMode.BEZIER_CURVE_GENERATION
+                || mode == ToolMode.SYMMETRY_PLACEMENT) {
+            return 0xFFE680;
+        }
+
+        return 0xFFFFFF;
+    }
+
     private static void drawBezierSampleCount(GuiGraphics guiGraphics, Font font) {
         String text = Lang.tr("iterablock.tool.bezier.sample_points", BezierCurveState.getSamplePointCount());
         int scaledWidth = Math.round(guiGraphics.guiWidth() / HUD_SCALE);
@@ -130,7 +146,7 @@ public class ToolHudRenderer implements IRenderer {
         }
 
         if (mode == ToolMode.BEZIER_CURVE_GENERATION) {
-            return Lang.tr("iterablock.tool.bezier.points", BezierCurveState.getPointCount());
+            return Lang.tr("iterablock.tool.bezier.points", BezierCurveState.getPointCount(), BezierCurveState.getRequiredPointCount());
         }
 
         if (mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT) {
@@ -140,6 +156,21 @@ public class ToolHudRenderer implements IRenderer {
                     BuilderHelperClientConfig.getRandomPlacementHeightMax(),
                     BuilderHelperClientConfig.getRandomPlacementCount(),
                     BuilderHelperClientConfig.getRandomPlacementRotationChance());
+        }
+
+        if (mode == ToolMode.SYMMETRY_PLACEMENT) {
+            if (!SymmetryPlacementState.hasCenter()) {
+                return Lang.tr("iterablock.tool.symmetry.empty");
+            }
+
+            net.minecraft.core.BlockPos center = SymmetryPlacementState.getCenter();
+            return Lang.tr("iterablock.tool.symmetry.params",
+                    center.getX(),
+                    center.getY(),
+                    center.getZ(),
+                    SymmetryPlacementState.getRadius(),
+                    SymmetryPlacementState.getHeight(),
+                    Lang.tr(SymmetryPlacementState.isLocked() ? "iterablock.tool.symmetry.locked" : "iterablock.tool.symmetry.editing"));
         }
 
         if (!SchematicPlacementState.hasPlacement()) {

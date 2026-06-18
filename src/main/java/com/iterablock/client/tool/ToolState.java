@@ -26,6 +26,7 @@ import net.minecraft.world.item.Items;
 
 public final class ToolState {
     private static final int PLACE_COMMAND_BATCH_SIZE = 256;
+    private static final int FOLLOW_PREVIEW_RANGE = 64;
     private static final Path TEMPORARY_AREA_PATH = Path.of(".iterablock-memory", "temporary-area.litematic").toAbsolutePath().normalize();
     private static final Random RANDOM = new Random();
     private static ToolMode mode = ToolMode.AREA_COPY_PASTE;
@@ -62,9 +63,22 @@ public final class ToolState {
     public static boolean toggleSchematicPlacementExecutionMode() {
         placeSchematicImmediately = !placeSchematicImmediately;
         setLastAction(Lang.tr(placeSchematicImmediately
-                ? "iterablock.tool.action.schematic_place_mode_immediate"
+                ? "iterablock.tool.action.schematic_place_mode_follow"
                 : "iterablock.tool.action.schematic_place_mode_execute"));
         return true;
+    }
+
+    public static void updateSchematicPlacementPreview(Minecraft minecraft) {
+        if (!placeSchematicImmediately
+                || mode != ToolMode.SCHEMATIC_PLACEMENT
+                || minecraft.screen != null
+                || minecraft.player == null
+                || ClientToolState.currentLitematic == null
+                || !hasToolItem(minecraft.player)) {
+            return;
+        }
+
+        SchematicPlacementState.preview(ClientToolState.currentLitematic, getPlacementOrigin(minecraft, FOLLOW_PREVIEW_RANGE));
     }
 
     public static void adjustLinearArray(Minecraft minecraft, int amount) {
@@ -106,6 +120,33 @@ public final class ToolState {
         }
 
         setLastAction(Lang.tr("iterablock.tool.action.area_reference", AreaSelectionState.getActiveCornerNumber()));
+        return true;
+    }
+
+    public static boolean toggleSymmetryLock() {
+        if (mode != ToolMode.SYMMETRY_PLACEMENT || !SymmetryPlacementState.toggleLockOrClear()) {
+            return false;
+        }
+
+        if (SymmetryPlacementState.hasCenter()) {
+            setLastAction(Lang.tr("iterablock.tool.action.symmetry_locked"));
+        } else {
+            setLastAction(Lang.tr("iterablock.tool.action.symmetry_cleared"));
+        }
+
+        return true;
+    }
+
+    public static boolean adjustSymmetryArea(Minecraft minecraft, int amount) {
+        if (mode != ToolMode.SYMMETRY_PLACEMENT || minecraft.player == null || amount == 0 || !SymmetryPlacementState.hasCenter()) {
+            return false;
+        }
+
+        if (!SymmetryPlacementState.adjust(minecraft.player.getLookAngle(), amount)) {
+            return false;
+        }
+
+        setLastAction(Lang.tr("iterablock.tool.action.symmetry_adjusted", SymmetryPlacementState.getRadius(), SymmetryPlacementState.getHeight()));
         return true;
     }
 
@@ -232,6 +273,7 @@ public final class ToolState {
             case AREA_COPY_PASTE -> handleAreaSelectionSecondary(minecraft);
             case SCHEMATIC_PLACEMENT, LINEAR_ARRAY, VOLUME_ARRAY -> handleSchematicPlacementSecondary(minecraft);
             case BEZIER_CURVE_GENERATION -> handleBezierSecondary(minecraft);
+            case SYMMETRY_PLACEMENT -> handleSymmetrySecondary(minecraft);
             default -> setLastAction(withCurrentLitematic(Lang.tr("iterablock.tool.action.mode_secondary", mode.getDisplayName())));
         }
 
@@ -306,7 +348,7 @@ public final class ToolState {
         }
 
         if (!BezierCurveState.isReady()) {
-            setLastAction(Lang.tr("iterablock.tool.action.bezier_need_points", BezierCurveState.getPointCount()));
+            setLastAction(Lang.tr("iterablock.tool.action.bezier_need_points", BezierCurveState.getRequiredPointCount(), BezierCurveState.getPointCount()));
             return true;
         }
 
@@ -398,14 +440,14 @@ public final class ToolState {
             return;
         }
 
-        BlockPos origin = getPlacementOrigin(minecraft);
-        SchematicPlacementState.place(ClientToolState.currentLitematic, origin);
-
         if (mode == ToolMode.SCHEMATIC_PLACEMENT && placeSchematicImmediately) {
+            SchematicPlacementState.preview(ClientToolState.currentLitematic, getPlacementOrigin(minecraft, FOLLOW_PREVIEW_RANGE));
             placeCurrentProjection(minecraft);
             return;
         }
 
+        BlockPos origin = getPlacementOrigin(minecraft);
+        SchematicPlacementState.place(ClientToolState.currentLitematic, origin);
         setLastAction(withCurrentLitematic(Lang.tr("iterablock.tool.action.placement_projected")));
     }
 
@@ -436,15 +478,28 @@ public final class ToolState {
 
         BlockPos point = getPlacementOrigin(minecraft);
         if (!BezierCurveState.addControlPoint(point)) {
-            setLastAction(Lang.tr("iterablock.tool.action.bezier_archived"));
+            setLastAction(Lang.tr("iterablock.tool.action.bezier_archived", BezierCurveState.getRequiredPointCount()));
             return;
         }
 
         setLastAction(Lang.tr("iterablock.tool.action.bezier_point", BezierCurveState.getPointCount(), point.getX(), point.getY(), point.getZ()));
     }
 
+    private static void handleSymmetrySecondary(Minecraft minecraft) {
+        if (minecraft.player == null) {
+            return;
+        }
+
+        BlockPos point = getTargetBlockPos(minecraft);
+        SymmetryPlacementState.setCenter(point);
+        setLastAction(Lang.tr("iterablock.tool.action.symmetry_center", point.getX(), point.getY(), point.getZ()));
+    }
+
     private static BlockPos getPlacementOrigin(Minecraft minecraft) {
-        int range = BuilderHelperClientConfig.getPlacementRange();
+        return getPlacementOrigin(minecraft, BuilderHelperClientConfig.getPlacementRange());
+    }
+
+    private static BlockPos getPlacementOrigin(Minecraft minecraft, int range) {
         HitResult result = minecraft.player.pick(range, 0.0F, false);
 
         if (result instanceof BlockHitResult hitResult && hitResult.getType() == HitResult.Type.BLOCK) {

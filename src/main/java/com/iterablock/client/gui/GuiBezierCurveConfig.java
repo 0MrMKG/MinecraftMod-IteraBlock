@@ -201,6 +201,7 @@ public class GuiBezierCurveConfig extends GuiBase {
         switch (this.editingField) {
             case PLACEMENT_PRECISION -> BuilderHelperClientConfig.setBezierPlacementPrecision(value);
             case PLACEMENT_WIDTH -> BuilderHelperClientConfig.setBezierPlacementWidth(value);
+            case CONTROL_POINT_COUNT -> BuilderHelperClientConfig.setBezierControlPointCount(value);
             case PLACE_NBT_MODE -> {
             }
         }
@@ -225,6 +226,7 @@ public class GuiBezierCurveConfig extends GuiBase {
         return switch (field) {
             case PLACEMENT_PRECISION -> BuilderHelperClientConfig.getBezierPlacementPrecision();
             case PLACEMENT_WIDTH -> BuilderHelperClientConfig.getBezierPlacementWidth();
+            case CONTROL_POINT_COUNT -> BuilderHelperClientConfig.getBezierControlPointCount();
             case PLACE_NBT_MODE -> BuilderHelperClientConfig.isBezierPlaceNbtMode() ? 1 : 0;
         };
     }
@@ -286,6 +288,7 @@ public class GuiBezierCurveConfig extends GuiBase {
     private enum Field {
         PLACEMENT_PRECISION("iterablock.gui.bezier_config.option.placement_precision", false),
         PLACEMENT_WIDTH("iterablock.gui.bezier_config.option.placement_width", false),
+        CONTROL_POINT_COUNT("iterablock.gui.bezier_config.option.control_point_count", false),
         PLACE_NBT_MODE("iterablock.gui.bezier_config.option.place_nbt_mode", true);
 
         private final String labelKey;

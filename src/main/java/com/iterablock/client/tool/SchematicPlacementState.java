@@ -38,6 +38,11 @@ public final class SchematicPlacementState {
         resetArrayCounts();
     }
 
+    public static void preview(LoadedLitematicManager.Entry selectedEntry, BlockPos selectedOrigin) {
+        entry = selectedEntry;
+        origin = selectedOrigin;
+    }
+
     public static LoadedLitematicManager.Entry getEntry() {
         return entry;
     }

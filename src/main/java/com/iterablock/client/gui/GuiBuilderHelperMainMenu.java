@@ -415,7 +415,7 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         int axisCardWidth = Math.max(66, (int) Math.round(BASE_AXIS_CARD_WIDTH * uiScale));
         int startX = Math.max(margin, (this.width - contentWidth) / 2);
         int topY = Math.max(margin + 22, (int) Math.round(this.height * 0.16));
-        int totalHeight = buttonHeight * 3 + rowGap * 2 + groupGap + axisCardHeight + 14;
+        int totalHeight = buttonHeight * 4 + rowGap * 3 + groupGap + axisCardHeight + 14;
         int maxTopY = Math.max(margin + 18, this.height - margin - totalHeight);
 
         if (topY > maxTopY) {
@@ -423,7 +423,7 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         }
 
         int rowStep = buttonHeight + rowGap;
-        int axisY = topY + rowStep * 3 + groupGap;
+        int axisY = topY + rowStep * 4 + groupGap;
         int axisStartX = startX;
         int previewY = axisY + axisCardHeight + 5;
         int resetY = axisY + Math.max(0, (axisCardHeight - resetHeight) / 2);
@@ -445,6 +445,8 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         placements.add(new ButtonPlacement(MenuButton.PLACEMENT_REPLACE_MODE, rightX, topY + rowStep, layout.buttonWidth(), layout.buttonHeight(), false));
         placements.add(new ButtonPlacement(MenuButton.RANDOM_PLACEMENT_CONFIG, leftX, topY + rowStep * 2, layout.buttonWidth(), layout.buttonHeight(), false));
         placements.add(new ButtonPlacement(MenuButton.BEZIER_CURVE_CONFIG, rightX, topY + rowStep * 2, layout.buttonWidth(), layout.buttonHeight(), false));
+        placements.add(new ButtonPlacement(MenuButton.EMPTY_LEFT, leftX, topY + rowStep * 3, layout.buttonWidth(), layout.buttonHeight(), false));
+        placements.add(new ButtonPlacement(MenuButton.EMPTY_RIGHT, rightX, topY + rowStep * 3, layout.buttonWidth(), layout.buttonHeight(), false));
         return placements;
     }
 
@@ -524,6 +526,7 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         PLACEMENT_REPLACE_MODE(4, "iterablock.gui.main_menu.replace_mode", IconType.CUSTOM),
         RANDOM_PLACEMENT_CONFIG(5, "iterablock.gui.main_menu.random_config", IconType.RANDOM_CONFIG),
         BEZIER_CURVE_CONFIG(6, "iterablock.gui.main_menu.bezier_config", IconType.BEZIER_CONFIG),
+        EMPTY_LEFT(0, "", IconType.CUSTOM, true),
         EMPTY_RIGHT(0, "", IconType.CUSTOM, true);
 
         private final int number;

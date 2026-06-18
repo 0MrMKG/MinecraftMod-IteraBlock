@@ -115,6 +115,10 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return ToolState.toggleAreaSelectionReference();
         }
 
+        if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {
+            return ToolState.toggleSymmetryLock();
+        }
+
         if (minecraft.options.keyAttack.matchesMouse(mouseButton)) {
             return ToolState.handlePrimaryAction(minecraft);
         }
@@ -159,6 +163,10 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
 
             ToolState.adjustVolumeArray(minecraft, amount > 0.0 ? 1 : -1);
             return true;
+        }
+
+        if (ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {
+            return ToolState.adjustSymmetryArea(minecraft, amount > 0.0 ? 1 : -1);
         }
 
         return false;
