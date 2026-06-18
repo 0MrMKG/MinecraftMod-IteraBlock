@@ -1,0 +1,91 @@
+package com.iterablock.client.tool;
+
+import java.util.List;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.commands.arguments.blocks.BlockStateParser;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+
+public final class SymmetryPlacementHandler {
+    private static final SymmetryPlacementHandler INSTANCE = new SymmetryPlacementHandler();
+
+    private SymmetryPlacementHandler() {
+    }
+
+    public static SymmetryPlacementHandler getInstance() {
+        return INSTANCE;
+    }
+
+    @SubscribeEvent
+    public void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (!event.getLevel().isClientSide()
+                || minecraft.screen != null
+                || minecraft.player == null
+                || minecraft.getConnection() == null
+                || event.getEntity() != minecraft.player
+                || ToolState.getMode() != ToolMode.SYMMETRY_PLACEMENT
+                || !SymmetryPlacementState.isLocked()) {
+            return;
+        }
+
+        ItemStack stack = event.getItemStack();
+
+        if (!(stack.getItem() instanceof BlockItem blockItem)) {
+            return;
+        }
+
+        BlockHitResult hitResult = event.getHitVec();
+        BlockPos placedPos = event.getPos().relative(hitResult.getDirection());
+
+        if (!SymmetryPlacementState.contains(placedPos)) {
+            return;
+        }
+
+        BlockState state = blockItem.getBlock().getStateForPlacement(new BlockPlaceContext((LocalPlayer) minecraft.player, event.getHand(), stack, hitResult));
+
+        if (state == null || state.isAir()) {
+            return;
+        }
+
+        List<SymmetryPlacementState.MirrorPlacement> placements = SymmetryPlacementState.getMirrorPlacements(placedPos);
+
+        if (placements.isEmpty()) {
+            return;
+        }
+
+        CommandFeedbackSilencer.getInstance().expectPlacementFeedback(placements.size());
+
+        for (SymmetryPlacementState.MirrorPlacement placement : placements) {
+            minecraft.player.connection.sendCommand(toSetBlockCommand(placement.pos(), mirrorState(state, placement)));
+        }
+    }
+
+    private static BlockState mirrorState(BlockState state, SymmetryPlacementState.MirrorPlacement placement) {
+        BlockState mirrored = state;
+
+        if (placement.mirrorX()) {
+            mirrored = mirrored.mirror(Mirror.FRONT_BACK);
+        }
+
+        if (placement.mirrorZ()) {
+            mirrored = mirrored.mirror(Mirror.LEFT_RIGHT);
+        }
+
+        return mirrored;
+    }
+
+    private static String toSetBlockCommand(BlockPos pos, BlockState state) {
+        return "setblock " + pos.getX() + " " + pos.getY() + " " + pos.getZ() + " " + BlockStateParser.serialize(state) + " replace";
+    }
+}
