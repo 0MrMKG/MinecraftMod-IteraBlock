@@ -7,6 +7,7 @@ import java.util.List;
 
 import com.iterablock.client.litematica.LitematicaSchematicInfo;
 import com.iterablock.client.tool.ClientToolState;
+import com.iterablock.client.tool.SchematicProjectionRenderer;
 import com.iterablock.client.tool.SchematicPlacementState;
 
 public final class LoadedLitematicManager {
@@ -65,6 +66,7 @@ public final class LoadedLitematicManager {
         ENTRIES.remove(index);
         TemplateSelection.clearIfPath(entry.path());
         SchematicPlacementState.clearIfEntry(entry);
+        SchematicProjectionRenderer.getInstance().clearCache();
 
         if (ENTRIES.isEmpty()) {
             selectedEntry = null;
@@ -82,6 +84,7 @@ public final class LoadedLitematicManager {
         selectedEntry = null;
         TemplateSelection.clear();
         SchematicPlacementState.clear();
+        SchematicProjectionRenderer.getInstance().clearCache();
         ClientToolState.setCurrentLitematic(null);
     }
 

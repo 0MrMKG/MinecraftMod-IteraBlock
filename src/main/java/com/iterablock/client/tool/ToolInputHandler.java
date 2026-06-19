@@ -15,6 +15,7 @@ import org.lwjgl.glfw.GLFW;
 
 public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandler {
     private static final ToolInputHandler INSTANCE = new ToolInputHandler();
+    private boolean wheelBypass;
 
     private ToolInputHandler() {
     }
@@ -68,6 +69,10 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return false;
         }
 
+        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_X && ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {
+            return ToolState.toggleSymmetryEnabled();
+        }
+
         if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C && ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {
             return ToolState.toggleSymmetryKind();
         }
@@ -119,12 +124,16 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return false;
         }
 
-        if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && ToolState.getMode() == ToolMode.AREA_COPY_PASTE) {
-            return ToolState.toggleAreaSelectionReference();
-        }
-
         if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {
             return ToolState.toggleSymmetryLock();
+        }
+
+        if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
+            if (ToolState.getMode() == ToolMode.AREA_COPY_PASTE) {
+                ToolState.toggleAreaSelectionReference();
+            }
+            this.wheelBypass = true;
+            return true;
         }
 
         if (minecraft.options.keyAttack.matchesMouse(mouseButton)) {
@@ -141,6 +150,15 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
     @Override
     public boolean onMouseScroll(int mouseX, int mouseY, double amount) {
         Minecraft minecraft = Minecraft.getInstance();
+
+        if (minecraft.player == null || !ToolState.hasToolItem(minecraft.player)) {
+            this.wheelBypass = false;
+            return false;
+        }
+
+        if (this.wheelBypass) {
+            return false;
+        }
 
         if (amount == 0.0 || !canHandleToolInput(minecraft)) {
             return false;

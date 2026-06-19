@@ -11,6 +11,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
@@ -36,7 +37,16 @@ public final class SymmetryPlacementHandler {
                 || minecraft.getConnection() == null
                 || event.getEntity() != minecraft.player
                 || ToolState.getMode() != ToolMode.SYMMETRY_PLACEMENT
-                || !SymmetryPlacementState.isLocked()) {
+                || !SymmetryPlacementState.isActive()) {
+            return;
+        }
+
+        BlockHitResult hitResult = event.getHitVec();
+        BlockPos interactedPos = event.getPos();
+        BlockState interactedState = event.getLevel().getBlockState(interactedPos);
+
+        if (!minecraft.player.isShiftKeyDown() && interactedState.hasProperty(BlockStateProperties.OPEN)) {
+            mirrorOpenStateInteraction(minecraft, interactedPos, interactedState);
             return;
         }
 
@@ -46,7 +56,6 @@ public final class SymmetryPlacementHandler {
             return;
         }
 
-        BlockHitResult hitResult = event.getHitVec();
         BlockPos placedPos = event.getPos().relative(hitResult.getDirection());
 
         if (!SymmetryPlacementState.contains(placedPos)) {
@@ -72,6 +81,43 @@ public final class SymmetryPlacementHandler {
         }
     }
 
+    private static void mirrorOpenStateInteraction(Minecraft minecraft, BlockPos interactedPos, BlockState interactedState) {
+        if (!SymmetryPlacementState.contains(interactedPos)) {
+            return;
+        }
+
+        List<SymmetryPlacementState.MirrorPlacement> placements = SymmetryPlacementState.getMirrorPlacements(interactedPos);
+
+        if (placements.isEmpty()) {
+            return;
+        }
+
+        int mirroredCount = 0;
+
+        for (SymmetryPlacementState.MirrorPlacement placement : placements) {
+            BlockState targetState = minecraft.level.getBlockState(placement.pos());
+
+            if (targetState.getBlock() == interactedState.getBlock()) {
+                mirroredCount++;
+            }
+        }
+
+        if (mirroredCount == 0) {
+            return;
+        }
+
+        BlockState toggledState = interactedState.cycle(BlockStateProperties.OPEN);
+        CommandFeedbackSilencer.getInstance().expectPlacementFeedback(mirroredCount);
+
+        for (SymmetryPlacementState.MirrorPlacement placement : placements) {
+            BlockState targetState = minecraft.level.getBlockState(placement.pos());
+
+            if (targetState.getBlock() == interactedState.getBlock()) {
+                minecraft.player.connection.sendCommand(toSetBlockCommand(placement.pos(), mirrorState(toggledState, placement)));
+            }
+        }
+    }
+
     @SubscribeEvent
     public void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -83,7 +129,7 @@ public final class SymmetryPlacementHandler {
                 || minecraft.getConnection() == null
                 || event.getEntity() != minecraft.player
                 || ToolState.getMode() != ToolMode.SYMMETRY_PLACEMENT
-                || !SymmetryPlacementState.isLocked()) {
+                || !SymmetryPlacementState.isActive()) {
             return;
         }
 

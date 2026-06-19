@@ -1,8 +1,6 @@
 package com.iterablock.client.tool;
 
 import java.util.List;
-import java.util.Set;
-
 import com.iterablock.client.config.BuilderHelperClientConfig;
 import com.iterablock.client.litematica.LitematicaSchematicInfo;
 import com.iterablock.client.template.LoadedLitematicManager;
@@ -35,14 +33,14 @@ public class SchematicProjectionRenderer {
     private static final int BOUNDING_BOX_COLOR = 0xD08AE8FF;
     private static final int TARGET_FILL_COLOR = 0x4400FF66;
     private static final int TARGET_LINE_COLOR = 0xF000FF66;
-    private static final int OCCUPIED_FILL_COLOR = TARGET_FILL_COLOR;
-    private static final int OCCUPIED_LINE_COLOR = TARGET_LINE_COLOR;
-    private static final int AREA_SELECTION_FILL_COLOR = 0x229EB8A6;
+    private static final int AREA_SELECTION_FILL_RGB = 0x9EB8A6;
     private static final int AREA_SELECTION_LINE_COLOR = 0xF4FFFFFF;
     private static final int AREA_FIRST_POINT_FILL_COLOR = 0x66AFD7E8;
+    private static final int AREA_FIRST_POINT_ACTIVE_FILL_COLOR = 0x995C9FB8;
     private static final int AREA_FIRST_POINT_LINE_COLOR = 0xFFFFFFFF;
     private static final int AREA_FIRST_POINT_ACTIVE_LINE_COLOR = 0xFFFFFFFF;
     private static final int AREA_SECOND_POINT_FILL_COLOR = 0x66E8D9AF;
+    private static final int AREA_SECOND_POINT_ACTIVE_FILL_COLOR = 0x99B89F5C;
     private static final int AREA_SECOND_POINT_LINE_COLOR = 0xFFFFFFFF;
     private static final int AREA_SECOND_POINT_ACTIVE_LINE_COLOR = 0xFFFFFFFF;
     private static final int BEZIER_CURVE_LINE_COLOR = 0xE0F3C6D3;
@@ -51,20 +49,50 @@ public class SchematicProjectionRenderer {
     private static final int BEZIER_POINT_FILL_COLOR = 0x55F6D6A8;
     private static final int BEZIER_PREVIOUS_POINT_LINE_COLOR = 0xF0FF4A4A;
     private static final int BEZIER_PREVIOUS_POINT_FILL_COLOR = 0x44FF4A4A;
-    private static final int SYMMETRY_AREA_FILL_COLOR = 0x0A6FAF9A;
-    private static final int SYMMETRY_LOCKED_AREA_FILL_COLOR = 0x0AFFFFFF;
+    private static final int SYMMETRY_AREA_FILL_RGB = 0x6FAF9A;
+    private static final int SYMMETRY_LOCKED_AREA_FILL_RGB = 0xFFFFFF;
     private static final int SYMMETRY_AREA_LINE_COLOR = 0xB0D6FFF0;
     private static final int SYMMETRY_LOCKED_LINE_COLOR = 0x99FFFFFF;
     private static final int SYMMETRY_CENTER_UNLOCKED_FILL_COLOR = 0x99BFE3D7;
     private static final int SYMMETRY_CENTER_LOCKED_FILL_COLOR = 0xB3C84040;
     private static final int SYMMETRY_CENTER_LINE_COLOR = 0xF0FFFFFF;
-    private static final double OCCUPIED_MARKER_EPSILON = 0.003D;
+    private LoadedLitematicManager.Entry cachedBoundsEntry;
+    private int cachedBoundsRotation = -1;
+    private SchematicPlacementState.MirrorAxis cachedBoundsMirror = SchematicPlacementState.MirrorAxis.NONE;
+    private Bounds cachedLocalBounds;
+    private LoadedLitematicManager.Entry cachedStepEntry;
+    private int cachedStepRotation = -1;
+    private SchematicPlacementState.MirrorAxis cachedStepMirror = SchematicPlacementState.MirrorAxis.NONE;
+    private int cachedStepOverlapX = -1;
+    private int cachedStepOverlapY = -1;
+    private int cachedStepOverlapZ = -1;
+    private BlockPos cachedArrayStep;
+    private ProjectionKey cachedProjectionKey;
+    private List<RenderBlock> cachedProjectionBlocks = java.util.List.of();
+    private List<Bounds> cachedProjectionBounds = java.util.List.of();
 
     private SchematicProjectionRenderer() {
     }
 
     public static SchematicProjectionRenderer getInstance() {
         return INSTANCE;
+    }
+
+    public void clearCache() {
+        this.cachedBoundsEntry = null;
+        this.cachedBoundsRotation = -1;
+        this.cachedBoundsMirror = SchematicPlacementState.MirrorAxis.NONE;
+        this.cachedLocalBounds = null;
+        this.cachedStepEntry = null;
+        this.cachedStepRotation = -1;
+        this.cachedStepMirror = SchematicPlacementState.MirrorAxis.NONE;
+        this.cachedStepOverlapX = -1;
+        this.cachedStepOverlapY = -1;
+        this.cachedStepOverlapZ = -1;
+        this.cachedArrayStep = null;
+        this.cachedProjectionKey = null;
+        this.cachedProjectionBlocks = java.util.List.of();
+        this.cachedProjectionBounds = java.util.List.of();
     }
 
     @SubscribeEvent
@@ -85,11 +113,16 @@ public class SchematicProjectionRenderer {
 
         poseStack.pushPose();
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
-        ToolState.updateSchematicPlacementPreview(minecraft);
+        boolean hasToolItem = ToolState.hasToolItem(minecraft.player);
+
+        if (hasToolItem) {
+            ToolState.updateSchematicPlacementPreview(minecraft);
+        }
+
         this.renderAreaSelection(poseStack);
         this.renderSymmetryPlacement(poseStack);
-        this.renderActivePlacement(minecraft, poseStack);
-        this.renderPlacementTarget(poseStack);
+        this.renderActivePlacement(minecraft, poseStack, hasToolItem);
+        this.renderPlacementTarget(poseStack, hasToolItem);
         this.renderBezierCurve(minecraft, poseStack, camera);
         poseStack.popPose();
     }
@@ -104,8 +137,8 @@ public class SchematicProjectionRenderer {
         return false;
     }
 
-    private void renderActivePlacement(Minecraft minecraft, PoseStack poseStack) {
-        if (!SchematicPlacementState.hasPlacement()) {
+    private void renderActivePlacement(Minecraft minecraft, PoseStack poseStack, boolean hasToolItem) {
+        if (!hasToolItem || !SchematicPlacementState.hasPlacement()) {
             return;
         }
 
@@ -116,40 +149,73 @@ public class SchematicProjectionRenderer {
             return;
         }
 
-        BlockPos arrayStep = SchematicPlacementState.getLinearArrayStep(entry.info());
-        List<BlockPos> offsets = this.getPlacementOffsets(arrayStep);
-        int realRenderLimit = this.getRealRenderLimit(offsets.size());
+        ProjectionSnapshot snapshot = this.getProjectionSnapshot(minecraft, origin, entry);
         MultiBufferSource.BufferSource bufferSource = minecraft.renderBuffers().bufferSource();
-        List<BlockPos> occupiedBlocks = new java.util.ArrayList<>();
-        Set<BlockPos> occupiedBlockSet = new java.util.HashSet<>();
 
-        if (realRenderLimit > 0) {
+        if (!snapshot.blocks().isEmpty()) {
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 0.8F);
 
-            for (int copy = 0; copy < realRenderLimit; copy++) {
-                BlockPos copyOrigin = origin.offset(offsets.get(copy));
-                this.renderPlacement(minecraft, poseStack, bufferSource, copyOrigin, entry.info(), occupiedBlocks, occupiedBlockSet);
+            for (RenderBlock block : snapshot.blocks()) {
+                this.renderBlock(minecraft, poseStack, bufferSource, block.pos(), block.state());
             }
 
             bufferSource.endBatch();
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
             RenderSystem.disableBlend();
+        }
 
-            for (BlockPos occupiedBlock : occupiedBlocks) {
-                this.renderOccupiedBlockMarker(poseStack, occupiedBlock);
-            }
+        for (Bounds bounds : snapshot.bounds()) {
+            this.renderLineBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), BOUNDING_BOX_COLOR);
+        }
+    }
+
+    private ProjectionSnapshot getProjectionSnapshot(Minecraft minecraft, BlockPos origin, LoadedLitematicManager.Entry entry) {
+        BlockPos arrayStep = this.getArrayStep(entry);
+        List<BlockPos> offsets = this.getPlacementOffsets(arrayStep);
+        int realRenderLimit = this.getRealRenderLimit(offsets.size());
+        ProjectionKey key = new ProjectionKey(
+                entry,
+                origin,
+                ToolState.getMode(),
+                SchematicPlacementState.getRotationSteps(),
+                SchematicPlacementState.getMirrorAxis(),
+                SchematicPlacementState.getLinearArrayCount(),
+                SchematicPlacementState.getVolumeArrayCount(SchematicPlacementState.Axis.X),
+                SchematicPlacementState.getVolumeArrayCount(SchematicPlacementState.Axis.Y),
+                SchematicPlacementState.getVolumeArrayCount(SchematicPlacementState.Axis.Z),
+                SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.X),
+                SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Y),
+                SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Z),
+                BuilderHelperClientConfig.getLinearArrayRenderLimit(),
+                BuilderHelperClientConfig.getVolumeArrayRenderLimit()
+        );
+
+        if (key.equals(this.cachedProjectionKey)) {
+            return new ProjectionSnapshot(this.cachedProjectionBlocks, this.cachedProjectionBounds);
+        }
+
+        List<RenderBlock> blocks = new java.util.ArrayList<>();
+        List<Bounds> bounds = new java.util.ArrayList<>();
+
+        for (int copy = 0; copy < realRenderLimit; copy++) {
+            BlockPos copyOrigin = origin.offset(offsets.get(copy));
+            this.collectPlacementBlocks(minecraft, copyOrigin, entry.info(), blocks);
         }
 
         for (BlockPos offset : offsets) {
-            BlockPos copyOrigin = origin.offset(offset);
-            Bounds bounds = this.findPlacementBounds(copyOrigin, entry.info());
+            Bounds copyBounds = this.getPlacementBounds(origin.offset(offset), entry);
 
-            if (bounds != null) {
-                this.renderLineBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), BOUNDING_BOX_COLOR);
+            if (copyBounds != null) {
+                bounds.add(copyBounds);
             }
         }
+
+        this.cachedProjectionKey = key;
+        this.cachedProjectionBlocks = List.copyOf(blocks);
+        this.cachedProjectionBounds = List.copyOf(bounds);
+        return new ProjectionSnapshot(this.cachedProjectionBlocks, this.cachedProjectionBounds);
     }
 
     private List<BlockPos> getPlacementOffsets(BlockPos arrayStep) {
@@ -171,6 +237,33 @@ public class SchematicProjectionRenderer {
         return java.util.List.of(BlockPos.ZERO);
     }
 
+    private BlockPos getArrayStep(LoadedLitematicManager.Entry entry) {
+        int rotation = SchematicPlacementState.getRotationSteps();
+        SchematicPlacementState.MirrorAxis mirror = SchematicPlacementState.getMirrorAxis();
+        int overlapX = SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.X);
+        int overlapY = SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Y);
+        int overlapZ = SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Z);
+
+        if (this.cachedStepEntry == entry
+                && this.cachedStepRotation == rotation
+                && this.cachedStepMirror == mirror
+                && this.cachedStepOverlapX == overlapX
+                && this.cachedStepOverlapY == overlapY
+                && this.cachedStepOverlapZ == overlapZ
+                && this.cachedArrayStep != null) {
+            return this.cachedArrayStep;
+        }
+
+        this.cachedStepEntry = entry;
+        this.cachedStepRotation = rotation;
+        this.cachedStepMirror = mirror;
+        this.cachedStepOverlapX = overlapX;
+        this.cachedStepOverlapY = overlapY;
+        this.cachedStepOverlapZ = overlapZ;
+        this.cachedArrayStep = SchematicPlacementState.getLinearArrayStep(entry.info());
+        return this.cachedArrayStep;
+    }
+
     private int getRealRenderLimit(int copies) {
         if (ToolState.getMode() == ToolMode.LINEAR_ARRAY) {
             return Math.min(copies, BuilderHelperClientConfig.getLinearArrayRenderLimit());
@@ -184,13 +277,13 @@ public class SchematicProjectionRenderer {
         return copies;
     }
 
-    private void renderPlacement(Minecraft minecraft, PoseStack poseStack, MultiBufferSource bufferSource, BlockPos origin, LitematicaSchematicInfo info, List<BlockPos> occupiedBlocks, Set<BlockPos> occupiedBlockSet) {
+    private void collectPlacementBlocks(Minecraft minecraft, BlockPos origin, LitematicaSchematicInfo info, List<RenderBlock> renderBlocks) {
         int rendered = 0;
 
         for (LitematicaSchematicInfo.Region region : info.regions()) {
-            List<LitematicaSchematicInfo.BlockSample> blocks = region.blocks();
+            List<LitematicaSchematicInfo.BlockSample> samples = region.blocks();
 
-            for (LitematicaSchematicInfo.BlockSample block : blocks) {
+            for (LitematicaSchematicInfo.BlockSample block : samples) {
                 if (rendered++ >= MAX_RENDERED_BOXES) {
                     break;
                 }
@@ -199,14 +292,10 @@ public class SchematicProjectionRenderer {
                 BlockState state = SchematicPlacementState.transformState(block.state());
 
                 if (!minecraft.level.getBlockState(pos).isAir()) {
-                    if (occupiedBlocks.size() < MAX_RENDERED_BOXES && occupiedBlockSet.add(pos)) {
-                        occupiedBlocks.add(pos);
-                    }
-
                     continue;
                 }
 
-                this.renderBlock(minecraft, poseStack, bufferSource, pos, state);
+                renderBlocks.add(new RenderBlock(pos, state));
             }
 
             if (rendered >= MAX_RENDERED_BOXES) {
@@ -226,19 +315,34 @@ public class SchematicProjectionRenderer {
         poseStack.popPose();
     }
 
-    private void renderOccupiedBlockMarker(PoseStack poseStack, BlockPos pos) {
-        double minX = pos.getX() - OCCUPIED_MARKER_EPSILON;
-        double minY = pos.getY() - OCCUPIED_MARKER_EPSILON;
-        double minZ = pos.getZ() - OCCUPIED_MARKER_EPSILON;
-        double maxX = pos.getX() + 1.0D + OCCUPIED_MARKER_EPSILON;
-        double maxY = pos.getY() + 1.0D + OCCUPIED_MARKER_EPSILON;
-        double maxZ = pos.getZ() + 1.0D + OCCUPIED_MARKER_EPSILON;
+    private Bounds getPlacementBounds(BlockPos origin, LoadedLitematicManager.Entry entry) {
+        Bounds localBounds = this.getLocalPlacementBounds(entry);
 
-        this.renderFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, OCCUPIED_FILL_COLOR);
-        this.renderLineBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, OCCUPIED_LINE_COLOR);
+        if (localBounds == null) {
+            return null;
+        }
+
+        return localBounds.offset(origin);
     }
 
-    private Bounds findPlacementBounds(BlockPos origin, LitematicaSchematicInfo info) {
+    private Bounds getLocalPlacementBounds(LoadedLitematicManager.Entry entry) {
+        int rotation = SchematicPlacementState.getRotationSteps();
+        SchematicPlacementState.MirrorAxis mirror = SchematicPlacementState.getMirrorAxis();
+
+        if (this.cachedBoundsEntry == entry
+                && this.cachedBoundsRotation == rotation
+                && this.cachedBoundsMirror == mirror) {
+            return this.cachedLocalBounds;
+        }
+
+        this.cachedBoundsEntry = entry;
+        this.cachedBoundsRotation = rotation;
+        this.cachedBoundsMirror = mirror;
+        this.cachedLocalBounds = this.findLocalPlacementBounds(entry.info());
+        return this.cachedLocalBounds;
+    }
+
+    private Bounds findLocalPlacementBounds(LitematicaSchematicInfo info) {
         int rendered = 0;
         Integer minX = null;
         int minY = 0;
@@ -259,7 +363,7 @@ public class SchematicProjectionRenderer {
                     continue;
                 }
 
-                BlockPos pos = origin.offset(SchematicPlacementState.transformBlockOffset(region.position(), block.pos(), region.size()));
+                BlockPos pos = SchematicPlacementState.transformBlockOffset(region.position(), block.pos(), region.size());
 
                 if (minX == null) {
                     minX = pos.getX();
@@ -286,8 +390,8 @@ public class SchematicProjectionRenderer {
         return minX == null ? null : new Bounds(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
-    private void renderPlacementTarget(PoseStack poseStack) {
-        if (!SchematicPlacementState.hasPlacement()) {
+    private void renderPlacementTarget(PoseStack poseStack, boolean hasToolItem) {
+        if (!hasToolItem || !SchematicPlacementState.hasPlacement()) {
             return;
         }
 
@@ -310,13 +414,17 @@ public class SchematicProjectionRenderer {
         BlockPos second = AreaSelectionState.getSecondCorner();
 
         if (first != null) {
-            int lineColor = AreaSelectionState.getActiveCorner() == AreaSelectionState.Corner.FIRST ? AREA_FIRST_POINT_ACTIVE_LINE_COLOR : AREA_FIRST_POINT_LINE_COLOR;
-            this.renderAreaPointBox(poseStack, first, AREA_FIRST_POINT_FILL_COLOR, lineColor);
+            boolean active = AreaSelectionState.getActiveCorner() == AreaSelectionState.Corner.FIRST;
+            int fillColor = active ? AREA_FIRST_POINT_ACTIVE_FILL_COLOR : AREA_FIRST_POINT_FILL_COLOR;
+            int lineColor = active ? AREA_FIRST_POINT_ACTIVE_LINE_COLOR : AREA_FIRST_POINT_LINE_COLOR;
+            this.renderAreaPointBox(poseStack, first, fillColor, lineColor);
         }
 
         if (second != null) {
-            int lineColor = AreaSelectionState.getActiveCorner() == AreaSelectionState.Corner.SECOND ? AREA_SECOND_POINT_ACTIVE_LINE_COLOR : AREA_SECOND_POINT_LINE_COLOR;
-            this.renderAreaPointBox(poseStack, second, AREA_SECOND_POINT_FILL_COLOR, lineColor);
+            boolean active = AreaSelectionState.getActiveCorner() == AreaSelectionState.Corner.SECOND;
+            int fillColor = active ? AREA_SECOND_POINT_ACTIVE_FILL_COLOR : AREA_SECOND_POINT_FILL_COLOR;
+            int lineColor = active ? AREA_SECOND_POINT_ACTIVE_LINE_COLOR : AREA_SECOND_POINT_LINE_COLOR;
+            this.renderAreaPointBox(poseStack, second, fillColor, lineColor);
         }
 
         if (first == null || second == null) {
@@ -329,13 +437,18 @@ public class SchematicProjectionRenderer {
         int maxX = Math.max(first.getX(), second.getX()) + 1;
         int maxY = Math.max(first.getY(), second.getY()) + 1;
         int maxZ = Math.max(first.getZ(), second.getZ()) + 1;
-        this.renderFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, AREA_SELECTION_FILL_COLOR);
+        this.renderFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, this.getConfiguredFillColor(AREA_SELECTION_FILL_RGB));
         this.renderLineBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, AREA_SELECTION_LINE_COLOR);
     }
 
     private void renderAreaPointBox(PoseStack poseStack, BlockPos point, int fillColor, int lineColor) {
         this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, fillColor);
         this.renderLineBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, lineColor);
+    }
+
+    private int getConfiguredFillColor(int rgb) {
+        int alpha = Math.round(BuilderHelperClientConfig.getSelectionFillOpacity() * 255.0F / 100.0F);
+        return alpha << 24 | rgb;
     }
 
     private void renderSymmetryPlacement(PoseStack poseStack) {
@@ -346,7 +459,7 @@ public class SchematicProjectionRenderer {
         SymmetryPlacementState.Bounds bounds = SymmetryPlacementState.getBounds();
 
         if (bounds != null) {
-            int fillColor = SymmetryPlacementState.isLocked() ? SYMMETRY_LOCKED_AREA_FILL_COLOR : SYMMETRY_AREA_FILL_COLOR;
+            int fillColor = this.getConfiguredFillColor(SymmetryPlacementState.isLocked() ? SYMMETRY_LOCKED_AREA_FILL_RGB : SYMMETRY_AREA_FILL_RGB);
             if ((fillColor >>> 24) > 0) {
                 this.renderDepthAwareFilledBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), fillColor);
             }
@@ -483,6 +596,39 @@ public class SchematicProjectionRenderer {
         buffer.addVertex(poseStack.last(), (float) x, (float) y, (float) z).setColor(color);
     }
 
+    private record RenderBlock(BlockPos pos, BlockState state) {
+    }
+
+    private record ProjectionKey(
+            LoadedLitematicManager.Entry entry,
+            BlockPos origin,
+            ToolMode mode,
+            int rotation,
+            SchematicPlacementState.MirrorAxis mirror,
+            int linearCount,
+            int volumeX,
+            int volumeY,
+            int volumeZ,
+            int overlapX,
+            int overlapY,
+            int overlapZ,
+            int linearRenderLimit,
+            int volumeRenderLimit) {
+    }
+
+    private record ProjectionSnapshot(List<RenderBlock> blocks, List<Bounds> bounds) {
+    }
+
     private record Bounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        private Bounds offset(BlockPos pos) {
+            return new Bounds(
+                    this.minX + pos.getX(),
+                    this.minY + pos.getY(),
+                    this.minZ + pos.getZ(),
+                    this.maxX + pos.getX(),
+                    this.maxY + pos.getY(),
+                    this.maxZ + pos.getZ()
+            );
+        }
     }
 }

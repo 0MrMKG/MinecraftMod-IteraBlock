@@ -15,6 +15,7 @@ public final class SymmetryPlacementState {
     private static int radius = 4;
     private static int height = 2;
     private static boolean locked;
+    private static boolean enabled = true;
     private static Kind kind = Kind.CENTER;
     private static Parity parity = Parity.ODD;
     private static PlaneAxis planeAxis = PlaneAxis.X;
@@ -28,6 +29,7 @@ public final class SymmetryPlacementState {
             planeAxis = Math.abs(lookDirection.x) >= Math.abs(lookDirection.z) ? PlaneAxis.X : PlaneAxis.Z;
         }
         locked = false;
+        enabled = true;
     }
 
     public static Kind getKind() {
@@ -74,6 +76,23 @@ public final class SymmetryPlacementState {
         return locked;
     }
 
+    public static boolean isEnabled() {
+        return enabled;
+    }
+
+    public static boolean isActive() {
+        return locked && enabled;
+    }
+
+    public static boolean toggleEnabled() {
+        if (!locked || center == null) {
+            return false;
+        }
+
+        enabled = !enabled;
+        return true;
+    }
+
     public static boolean toggleLockOrClear() {
         if (center == null) {
             return false;
@@ -83,6 +102,7 @@ public final class SymmetryPlacementState {
             clear();
         } else {
             locked = true;
+            enabled = true;
         }
 
         return true;
@@ -115,7 +135,7 @@ public final class SymmetryPlacementState {
     }
 
     public static List<MirrorPlacement> getMirrorPlacements(BlockPos placedPos) {
-        if (!locked || center == null || !contains(placedPos)) {
+        if (!isActive() || center == null || !contains(placedPos)) {
             return List.of();
         }
 
@@ -124,16 +144,15 @@ public final class SymmetryPlacementState {
         }
 
         List<MirrorPlacement> placements = new ArrayList<>(3);
-        int centerOffset = parity == Parity.EVEN ? 1 : 0;
-        int mirroredX = center.getX() * 2 + centerOffset - placedPos.getX();
-        int mirroredZ = center.getZ() * 2 + centerOffset - placedPos.getZ();
-        BlockPos xMirror = new BlockPos(mirroredX, placedPos.getY(), placedPos.getZ());
-        BlockPos zMirror = new BlockPos(placedPos.getX(), placedPos.getY(), mirroredZ);
-        BlockPos xzMirror = new BlockPos(mirroredX, placedPos.getY(), mirroredZ);
+        int[] xCoords = getSymmetricCoords(placedPos.getX(), center.getX());
+        int[] zCoords = getSymmetricCoords(placedPos.getZ(), center.getZ());
 
-        addMirrorPlacement(placements, placedPos, xMirror, true, false);
-        addMirrorPlacement(placements, placedPos, zMirror, false, true);
-        addMirrorPlacement(placements, placedPos, xzMirror, true, true);
+        for (int x : xCoords) {
+            for (int z : zCoords) {
+                addMirrorPlacement(placements, placedPos, new BlockPos(x, placedPos.getY(), z), x != placedPos.getX(), z != placedPos.getZ());
+            }
+        }
+
         return List.copyOf(placements);
     }
 
@@ -227,12 +246,24 @@ public final class SymmetryPlacementState {
     public static void clear() {
         center = null;
         locked = false;
+        enabled = true;
     }
 
     private static void addMirrorPlacement(List<MirrorPlacement> placements, BlockPos original, BlockPos mirrored, boolean mirrorX, boolean mirrorZ) {
-        if (!mirrored.equals(original) && contains(mirrored)) {
+        if (!mirrored.equals(original) && contains(mirrored) && placements.stream().noneMatch(placement -> placement.pos().equals(mirrored))) {
             placements.add(new MirrorPlacement(mirrored, mirrorX, mirrorZ));
         }
+    }
+
+    private static int[] getSymmetricCoords(int value, int centerValue) {
+        int centerOffset = parity == Parity.EVEN ? 1 : 0;
+        int mirrored = centerValue * 2 + centerOffset - value;
+
+        if (parity == Parity.ODD && value == centerValue) {
+            return new int[] {value, value + 1};
+        }
+
+        return new int[] {value, mirrored};
     }
 
     private static List<MirrorPlacement> getPlaneMirrorPlacements(BlockPos placedPos) {

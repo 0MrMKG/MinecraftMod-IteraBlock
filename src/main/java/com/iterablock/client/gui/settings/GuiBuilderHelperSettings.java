@@ -643,6 +643,7 @@ public class GuiBuilderHelperSettings extends GuiBase {
         this.add(Category.HOTKEYS, "placeProjectionKey", "iterablock.gui.settings.keybind.place_projection", EntryType.KEYBIND, "Y");
         this.add(Category.HOTKEYS, "rotateProjectionKey", "iterablock.gui.settings.keybind.rotate_projection", EntryType.KEYBIND, "R");
         this.add(Category.HOTKEYS, "mirrorProjectionKey", "iterablock.gui.settings.keybind.mirror_projection", EntryType.KEYBIND, "G");
+        this.add(Category.VISUALS, "selectionFillOpacity", "iterablock.gui.settings.option.selection_fill_opacity", EntryType.TEXT, Integer.toString(BuilderHelperClientConfig.DEFAULT_SELECTION_FILL_OPACITY));
         this.add(Category.LITEMATIC, "placementRange", "iterablock.gui.settings.option.placement_range", EntryType.TEXT, "100");
         this.add(Category.LITEMATIC, "linearArrayRenderLimit", "iterablock.gui.settings.option.linear_array_render_limit", EntryType.TEXT, "5");
         this.add(Category.LITEMATIC, "volumeArrayRenderLimit", "iterablock.gui.settings.option.volume_array_render_limit", EntryType.TEXT, "3");
@@ -770,6 +771,7 @@ public class GuiBuilderHelperSettings extends GuiBase {
 
     private enum Category {
         FILES("iterablock.gui.settings.tab.files"),
+        VISUALS("iterablock.gui.settings.tab.visuals"),
         HOTKEYS("iterablock.gui.settings.tab.hotkeys"),
         LITEMATIC("iterablock.gui.settings.tab.litematic");
 

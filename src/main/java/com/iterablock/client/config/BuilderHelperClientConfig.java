@@ -25,6 +25,7 @@ public final class BuilderHelperClientConfig {
     public static final int DEFAULT_BEZIER_PLACEMENT_PRECISION = 8;
     public static final int DEFAULT_BEZIER_PLACEMENT_WIDTH = 1;
     public static final int DEFAULT_BEZIER_CONTROL_POINT_COUNT = 4;
+    public static final int DEFAULT_SELECTION_FILL_OPACITY = 12;
     public static final boolean DEFAULT_BEZIER_PLACE_NBT_MODE = false;
     private static final int MIN_PLACEMENT_RANGE = 1;
     private static final int MAX_PLACEMENT_RANGE = 512;
@@ -46,6 +47,8 @@ public final class BuilderHelperClientConfig {
     private static final int MAX_BEZIER_PLACEMENT_WIDTH = 32;
     private static final int MIN_BEZIER_CONTROL_POINT_COUNT = 4;
     private static final int MAX_BEZIER_CONTROL_POINT_COUNT = 64;
+    private static final int MIN_SELECTION_FILL_OPACITY = 0;
+    private static final int MAX_SELECTION_FILL_OPACITY = 100;
     private static final String PLACEMENT_RANGE_KEY = "placementRange";
     private static final String LINEAR_ARRAY_RENDER_LIMIT_KEY = "linearArrayRenderLimit";
     private static final String VOLUME_ARRAY_RENDER_LIMIT_KEY = "volumeArrayRenderLimit";
@@ -67,6 +70,7 @@ public final class BuilderHelperClientConfig {
     private static final String BEZIER_PLACEMENT_WIDTH_KEY = "bezierPlacementWidth";
     private static final String BEZIER_CONTROL_POINT_COUNT_KEY = "bezierControlPointCount";
     private static final String BEZIER_PLACE_NBT_MODE_KEY = "bezierPlaceNbtMode";
+    private static final String SELECTION_FILL_OPACITY_KEY = "selectionFillOpacity";
 
     private BuilderHelperClientConfig() {
     }
@@ -120,6 +124,10 @@ public final class BuilderHelperClientConfig {
 
     public static boolean isBezierPlaceNbtMode() {
         return Boolean.parseBoolean(loadProperties().getProperty(BEZIER_PLACE_NBT_MODE_KEY, Boolean.toString(DEFAULT_BEZIER_PLACE_NBT_MODE)));
+    }
+
+    public static int getSelectionFillOpacity() {
+        return getIntValue(SELECTION_FILL_OPACITY_KEY, DEFAULT_SELECTION_FILL_OPACITY, MIN_SELECTION_FILL_OPACITY, MAX_SELECTION_FILL_OPACITY);
     }
 
     public static void setRandomPlacementRadius(int value) {

@@ -2,7 +2,9 @@ package com.iterablock.client.tool;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.function.Consumer;
 
@@ -19,6 +21,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.item.ItemStack;
@@ -42,6 +46,10 @@ public final class ToolState {
 
     public static String getLastAction() {
         return lastAction.isEmpty() ? Lang.tr("iterablock.tool.action.ready") : lastAction;
+    }
+
+    public static String getLastActionCacheToken() {
+        return lastAction;
     }
 
     public static void setMode(ToolMode newMode) {
@@ -78,7 +86,10 @@ public final class ToolState {
             return;
         }
 
-        SchematicPlacementState.preview(ClientToolState.currentLitematic, getPlacementOrigin(minecraft, FOLLOW_PREVIEW_RANGE));
+        BlockPos origin = getPlacementOrigin(minecraft, FOLLOW_PREVIEW_RANGE);
+        if (SchematicPlacementState.getEntry() != ClientToolState.currentLitematic || !origin.equals(SchematicPlacementState.getOrigin())) {
+            SchematicPlacementState.preview(ClientToolState.currentLitematic, origin);
+        }
     }
 
     public static void adjustLinearArray(Minecraft minecraft, int amount) {
@@ -167,6 +178,22 @@ public final class ToolState {
 
         SymmetryPlacementState.Parity symmetryParity = SymmetryPlacementState.toggleParity();
         setLastAction(Lang.tr("iterablock.tool.action.symmetry_parity", Lang.tr(symmetryParity.translationKey())));
+        return true;
+    }
+
+    public static boolean toggleSymmetryEnabled() {
+        if (mode != ToolMode.SYMMETRY_PLACEMENT) {
+            return false;
+        }
+
+        if (!SymmetryPlacementState.toggleEnabled()) {
+            setLastAction(Lang.tr("iterablock.tool.action.symmetry_need_locked"));
+            return true;
+        }
+
+        setLastAction(Lang.tr(SymmetryPlacementState.isEnabled()
+                ? "iterablock.tool.action.symmetry_resumed"
+                : "iterablock.tool.action.symmetry_paused"));
         return true;
     }
 
@@ -329,6 +356,7 @@ public final class ToolState {
         PlacementBatcher batcher = new PlacementBatcher(BuilderHelperClientConfig.getPlacementReplaceMode());
         collectBlocks(origin, entry.info(), batcher);
         batcher.flush();
+        SchematicProjectionRenderer.getInstance().clearCache();
         setLastAction(Lang.tr("iterablock.tool.action.placed_projection", batcher.totalSent()));
         return true;
     }
@@ -397,8 +425,8 @@ public final class ToolState {
         }
 
         PlacementReplaceMode replaceMode = BuilderHelperClientConfig.getPlacementReplaceMode();
-        sendPlacedBlocks(blocks, replaceMode);
-        setLastAction(Lang.tr("iterablock.tool.action.bezier_placed", blocks.size()));
+        int sent = sendPlacedBlocks(blocks, replaceMode);
+        setLastAction(Lang.tr("iterablock.tool.action.bezier_placed", sent));
         return true;
     }
 
@@ -461,7 +489,10 @@ public final class ToolState {
         }
 
         if (mode == ToolMode.SCHEMATIC_PLACEMENT && placeSchematicImmediately) {
-            SchematicPlacementState.preview(ClientToolState.currentLitematic, getPlacementOrigin(minecraft, FOLLOW_PREVIEW_RANGE));
+            BlockPos origin = getPlacementOrigin(minecraft, FOLLOW_PREVIEW_RANGE);
+            if (SchematicPlacementState.getEntry() != ClientToolState.currentLitematic || !origin.equals(SchematicPlacementState.getOrigin())) {
+                SchematicPlacementState.preview(ClientToolState.currentLitematic, origin);
+            }
             placeCurrentProjection(minecraft);
             return;
         }
@@ -655,18 +686,57 @@ public final class ToolState {
         }
     }
 
-    private static void sendPlacedBlocks(List<PlacedBlock> blocks, PlacementReplaceMode replaceMode) {
+    private static int sendPlacedBlocks(List<PlacedBlock> blocks, PlacementReplaceMode replaceMode) {
         LocalPlayer player = Minecraft.getInstance().player;
 
         if (player == null || Minecraft.getInstance().getConnection() == null) {
+            return 0;
+        }
+
+        List<PlacedBlock> finalBlocks = preparePlacedBlocks(blocks);
+        CommandFeedbackSilencer.getInstance().expectPlacementFeedback(finalBlocks.size());
+
+        for (PlacedBlock block : finalBlocks) {
+            player.connection.sendCommand(toSetBlockCommand(block, replaceMode));
+        }
+
+        return finalBlocks.size();
+    }
+
+    private static List<PlacedBlock> preparePlacedBlocks(List<PlacedBlock> blocks) {
+        Map<BlockPos, BlockState> expanded = new LinkedHashMap<>();
+
+        for (PlacedBlock block : blocks) {
+            putPreparedBlock(expanded, block.pos(), block.state());
+
+            if (SymmetryPlacementState.isActive()) {
+                for (SymmetryPlacementState.MirrorPlacement placement : SymmetryPlacementState.getMirrorPlacements(block.pos())) {
+                    putPreparedBlock(expanded, placement.pos(), mirrorState(block.state(), placement));
+                }
+            }
+        }
+
+        List<PlacedBlock> result = new ArrayList<>(expanded.size());
+        expanded.forEach((pos, state) -> result.add(new PlacedBlock(pos, state)));
+        return result;
+    }
+
+    private static void putPreparedBlock(Map<BlockPos, BlockState> blocks, BlockPos pos, BlockState state) {
+        BlockState existing = blocks.get(pos);
+
+        if (existing != null && isHalfSlab(existing) && isSlab(state)) {
             return;
         }
 
-        CommandFeedbackSilencer.getInstance().expectPlacementFeedback(blocks.size());
+        blocks.put(pos, state);
+    }
 
-        for (PlacedBlock block : blocks) {
-            player.connection.sendCommand(toSetBlockCommand(block, replaceMode));
-        }
+    private static boolean isSlab(BlockState state) {
+        return state.getBlock() instanceof SlabBlock && state.hasProperty(SlabBlock.TYPE);
+    }
+
+    private static boolean isHalfSlab(BlockState state) {
+        return isSlab(state) && state.getValue(SlabBlock.TYPE) != SlabType.DOUBLE;
     }
 
     private static final class PlacementBatcher implements Consumer<PlacedBlock> {
@@ -681,10 +751,6 @@ public final class ToolState {
         @Override
         public void accept(PlacedBlock block) {
             this.buffer.add(block);
-
-            if (this.buffer.size() >= PLACE_COMMAND_BATCH_SIZE) {
-                this.flush();
-            }
         }
 
         private void flush() {
@@ -692,8 +758,7 @@ public final class ToolState {
                 return;
             }
 
-            sendPlacedBlocks(this.buffer, this.replaceMode);
-            this.totalSent += this.buffer.size();
+            this.totalSent += sendPlacedBlocks(this.buffer, this.replaceMode);
             this.buffer.clear();
         }
 
@@ -733,6 +798,20 @@ public final class ToolState {
 
     private static BlockState transformState(BlockState state, int rotationSteps, SchematicPlacementState.MirrorAxis mirrorAxis) {
         return SchematicPlacementState.transformState(state, rotationSteps, mirrorAxis);
+    }
+
+    private static BlockState mirrorState(BlockState state, SymmetryPlacementState.MirrorPlacement placement) {
+        BlockState mirrored = state;
+
+        if (placement.mirrorX()) {
+            mirrored = SchematicPlacementState.transformState(mirrored, 0, SchematicPlacementState.MirrorAxis.X);
+        }
+
+        if (placement.mirrorZ()) {
+            mirrored = SchematicPlacementState.transformState(mirrored, 0, SchematicPlacementState.MirrorAxis.Z);
+        }
+
+        return mirrored;
     }
 
     private static String getMirrorAxisName(SchematicPlacementState.MirrorAxis axis) {

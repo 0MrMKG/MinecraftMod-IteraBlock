@@ -1,16 +1,26 @@
 package com.iterablock.client.tool;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.iterablock.client.Lang;
 import com.iterablock.client.config.BuilderHelperClientConfig;
+import com.iterablock.client.template.LoadedLitematicManager;
 
 import fi.dy.masa.malilib.interfaces.IRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.BlockPos;
 
 public class ToolHudRenderer implements IRenderer {
     private static final ToolHudRenderer INSTANCE = new ToolHudRenderer();
     private static final float HUD_SCALE = 0.75F;
+    private HudCacheKey cachedHudKey;
+    private HudLayout cachedHudLayout;
+    private BezierSampleCacheKey cachedBezierSampleKey;
+    private String cachedBezierSampleText = "";
+    private int cachedBezierSampleWidth;
 
     private ToolHudRenderer() {
     }
@@ -30,6 +40,34 @@ public class ToolHudRenderer implements IRenderer {
         }
 
         Font font = minecraft.font;
+        HudLayout hud = this.getHudLayout(minecraft, font, mode);
+        int x = Math.round(8 / HUD_SCALE);
+        int y = Math.round(8 / HUD_SCALE);
+
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().scale(HUD_SCALE, HUD_SCALE, 1.0F);
+        guiGraphics.fill(x - 4, y - 4, x + hud.width(), y + hud.height(), 0x8A071018);
+        guiGraphics.fill(x - 4, y - 4, x + hud.width(), y - 3, 0xB64EAFC5);
+
+        for (int i = 0; i < hud.lines().size(); i++) {
+            HudLine line = hud.lines().get(i);
+            guiGraphics.drawString(font, line.text(), x, y + i * 12, line.color(), true);
+        }
+
+        guiGraphics.pose().popPose();
+
+        if (mode == ToolMode.BEZIER_CURVE_GENERATION) {
+            this.drawBezierSampleCount(guiGraphics, font);
+        }
+    }
+
+    private HudLayout getHudLayout(Minecraft minecraft, Font font, ToolMode mode) {
+        HudCacheKey key = createHudCacheKey(minecraft, mode);
+
+        if (key.equals(this.cachedHudKey) && this.cachedHudLayout != null) {
+            return this.cachedHudLayout;
+        }
+
         String title = Lang.tr("iterablock.tool.title");
         String plainModeText = Lang.tr("iterablock.tool.mode", mode.getDisplayName());
         String modeText = Lang.tr("iterablock.tool.mode_numbered", formatModeNumber(mode.ordinal() + 1), mode.getDisplayName());
@@ -38,52 +76,80 @@ public class ToolHudRenderer implements IRenderer {
         String arrayText = getArrayText(minecraft, mode);
         String overlapText = getOverlapText(minecraft, mode);
         String actionText = ToolState.getLastAction();
-        boolean showBezierPlacementMode = !bezierPlacementModeText.isEmpty();
-        boolean showArray = !arrayText.isEmpty();
-        boolean showOverlap = !overlapText.isEmpty();
-        boolean showAction = actionText != null && !actionText.isBlank() && !actionText.equals(modeText) && !actionText.equals(plainModeText) && !actionText.equals(arrayText);
-        int x = Math.round(8 / HUD_SCALE);
-        int y = Math.round(8 / HUD_SCALE);
-        int bezierPlacementModeWidth = showBezierPlacementMode ? font.width(bezierPlacementModeText) : 0;
-        int actionWidth = showAction ? font.width(actionText) : 0;
-        int arrayWidth = showArray ? font.width(arrayText) : 0;
-        int overlapWidth = showOverlap ? font.width(overlapText) : 0;
-        int width = Math.max(Math.max(Math.max(font.width(title), font.width(modeText)), font.width(litematicText)), Math.max(Math.max(Math.max(actionWidth, arrayWidth), overlapWidth), bezierPlacementModeWidth)) + 14;
-        int height = 40 + (showBezierPlacementMode ? 12 : 0) + (showArray ? 12 : 0) + (showOverlap ? 12 : 0) + (showAction ? 12 : 0);
+        boolean showAction = actionText != null
+                && !actionText.isBlank()
+                && !actionText.equals(modeText)
+                && !actionText.equals(plainModeText)
+                && !actionText.equals(arrayText);
+        List<HudLine> lines = new ArrayList<>();
+        lines.add(new HudLine(title, 0xD6F4FF));
+        lines.add(new HudLine(modeText, getModeTextColor(mode)));
+        lines.add(new HudLine(litematicText, 0xFFFFFF));
 
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().scale(HUD_SCALE, HUD_SCALE, 1.0F);
-        guiGraphics.fill(x - 4, y - 4, x + width, y + height, 0x8A071018);
-        guiGraphics.fill(x - 4, y - 4, x + width, y - 3, 0xB64EAFC5);
-        guiGraphics.drawString(font, title, x, y, 0xD6F4FF, true);
-        guiGraphics.drawString(font, modeText, x, y + 12, getModeTextColor(mode), true);
-        guiGraphics.drawString(font, litematicText, x, y + 24, 0xFFFFFF, true);
-
-        int nextLineY = y + 36;
-        if (showBezierPlacementMode) {
-            guiGraphics.drawString(font, bezierPlacementModeText, x, nextLineY, 0xFFF3EECF, true);
-            nextLineY += 12;
+        if (!bezierPlacementModeText.isEmpty()) {
+            lines.add(new HudLine(bezierPlacementModeText, 0xFFF3EECF));
         }
 
-        if (showArray) {
-            guiGraphics.drawString(font, arrayText, x, nextLineY, 0xD6F4FF, true);
-            nextLineY += 12;
+        if (!arrayText.isEmpty()) {
+            lines.add(new HudLine(arrayText, 0xD6F4FF));
         }
 
-        if (showOverlap) {
-            guiGraphics.drawString(font, overlapText, x, nextLineY, 0xE8F6FF, true);
-            nextLineY += 12;
+        if (!overlapText.isEmpty()) {
+            lines.add(new HudLine(overlapText, 0xE8F6FF));
         }
 
         if (showAction) {
-            guiGraphics.drawString(font, actionText, x, nextLineY, 0xA7D9E6, true);
+            lines.add(new HudLine(actionText, 0xA7D9E6));
         }
 
-        guiGraphics.pose().popPose();
-
-        if (mode == ToolMode.BEZIER_CURVE_GENERATION) {
-            drawBezierSampleCount(guiGraphics, font);
+        int width = 0;
+        for (HudLine line : lines) {
+            width = Math.max(width, font.width(line.text()));
         }
+
+        this.cachedHudKey = key;
+        this.cachedHudLayout = new HudLayout(List.copyOf(lines), width + 14, 4 + lines.size() * 12);
+        return this.cachedHudLayout;
+    }
+
+    private static HudCacheKey createHudCacheKey(Minecraft minecraft, ToolMode mode) {
+        SchematicPlacementState.Axis lookAxis = minecraft.player == null ? null : SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
+        BlockPos symmetryCenter = SymmetryPlacementState.getCenter();
+        return new HudCacheKey(
+                mode,
+                ClientToolState.currentLitematic,
+                ToolState.getLastActionCacheToken(),
+                lookAxis,
+                BuilderHelperClientConfig.isBezierPlaceNbtMode(),
+                BezierCurveState.getPointCount(),
+                BezierCurveState.getRequiredPointCount(),
+                List.copyOf(BezierCurveState.getControlPoints()),
+                BuilderHelperClientConfig.getRandomPlacementRadius(),
+                BuilderHelperClientConfig.getRandomPlacementHeightMin(),
+                BuilderHelperClientConfig.getRandomPlacementHeightMax(),
+                BuilderHelperClientConfig.getRandomPlacementCount(),
+                BuilderHelperClientConfig.getRandomPlacementRotationChance(),
+                AreaSelectionState.getFirstCorner(),
+                AreaSelectionState.getSecondCorner(),
+                AreaSelectionState.getActiveCorner(),
+                SchematicPlacementState.hasPlacement(),
+                SchematicPlacementState.getLinearArrayAxisName(),
+                SchematicPlacementState.getLinearArrayCount(),
+                SchematicPlacementState.getVolumeArrayCount(SchematicPlacementState.Axis.X),
+                SchematicPlacementState.getVolumeArrayCount(SchematicPlacementState.Axis.Y),
+                SchematicPlacementState.getVolumeArrayCount(SchematicPlacementState.Axis.Z),
+                SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.X),
+                SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Y),
+                SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Z),
+                SymmetryPlacementState.hasCenter(),
+                symmetryCenter,
+                SymmetryPlacementState.getKind(),
+                SymmetryPlacementState.getParity(),
+                SymmetryPlacementState.getRadius(),
+                SymmetryPlacementState.getHeight(),
+                SymmetryPlacementState.isLocked(),
+                SymmetryPlacementState.isEnabled()
+        );
     }
 
     private static String getBezierPlacementModeText(ToolMode mode) {
@@ -113,12 +179,24 @@ public class ToolHudRenderer implements IRenderer {
         return 0xFFFFFF;
     }
 
-    private static void drawBezierSampleCount(GuiGraphics guiGraphics, Font font) {
-        String text = Lang.tr("iterablock.tool.bezier.sample_points", BezierCurveState.getSamplePointCount());
+    private void drawBezierSampleCount(GuiGraphics guiGraphics, Font font) {
+        BezierSampleCacheKey key = new BezierSampleCacheKey(
+                List.copyOf(BezierCurveState.getControlPoints()),
+                BezierCurveState.getRequiredPointCount(),
+                BuilderHelperClientConfig.getBezierPlacementPrecision()
+        );
+
+        if (!key.equals(this.cachedBezierSampleKey)) {
+            this.cachedBezierSampleKey = key;
+            this.cachedBezierSampleText = Lang.tr("iterablock.tool.bezier.sample_points", BezierCurveState.getSamplePointCount());
+            this.cachedBezierSampleWidth = font.width(this.cachedBezierSampleText);
+        }
+
+        String text = this.cachedBezierSampleText;
         int scaledWidth = Math.round(guiGraphics.guiWidth() / HUD_SCALE);
-        int x = scaledWidth - font.width(text) - Math.round(8 / HUD_SCALE);
+        int x = scaledWidth - this.cachedBezierSampleWidth - Math.round(8 / HUD_SCALE);
         int y = Math.round(8 / HUD_SCALE);
-        int width = font.width(text) + 10;
+        int width = this.cachedBezierSampleWidth + 10;
 
         guiGraphics.pose().pushPose();
         guiGraphics.pose().scale(HUD_SCALE, HUD_SCALE, 1.0F);
@@ -172,7 +250,8 @@ public class ToolHudRenderer implements IRenderer {
                     center.getZ(),
                     SymmetryPlacementState.getRadius(),
                     SymmetryPlacementState.getHeight(),
-                    Lang.tr(SymmetryPlacementState.isLocked() ? "iterablock.tool.symmetry.locked" : "iterablock.tool.symmetry.editing"));
+                    Lang.tr(SymmetryPlacementState.isLocked() ? "iterablock.tool.symmetry.locked" : "iterablock.tool.symmetry.editing"),
+                    Lang.tr(SymmetryPlacementState.isEnabled() ? "iterablock.tool.symmetry.enabled" : "iterablock.tool.symmetry.paused"));
         }
 
         if (!SchematicPlacementState.hasPlacement()) {
@@ -254,5 +333,50 @@ public class ToolHudRenderer implements IRenderer {
 
     private static String formatPos(net.minecraft.core.BlockPos pos) {
         return pos == null ? "-" : pos.getX() + "," + pos.getY() + "," + pos.getZ();
+    }
+
+    private record HudLine(String text, int color) {
+    }
+
+    private record HudLayout(List<HudLine> lines, int width, int height) {
+    }
+
+    private record BezierSampleCacheKey(List<BlockPos> controlPoints, int requiredPoints, int precision) {
+    }
+
+    private record HudCacheKey(
+            ToolMode mode,
+            LoadedLitematicManager.Entry litematic,
+            String lastAction,
+            SchematicPlacementState.Axis lookAxis,
+            boolean bezierPlaceNbtMode,
+            int bezierPointCount,
+            int bezierRequiredPointCount,
+            List<BlockPos> bezierControlPoints,
+            int randomRadius,
+            int randomHeightMin,
+            int randomHeightMax,
+            int randomCount,
+            int randomRotationChance,
+            BlockPos areaFirstCorner,
+            BlockPos areaSecondCorner,
+            AreaSelectionState.Corner areaActiveCorner,
+            boolean hasPlacement,
+            String linearAxis,
+            int linearCount,
+            int volumeX,
+            int volumeY,
+            int volumeZ,
+            int overlapX,
+            int overlapY,
+            int overlapZ,
+            boolean symmetryHasCenter,
+            BlockPos symmetryCenter,
+            SymmetryPlacementState.Kind symmetryKind,
+            SymmetryPlacementState.Parity symmetryParity,
+            int symmetryRadius,
+            int symmetryHeight,
+            boolean symmetryLocked,
+            boolean symmetryEnabled) {
     }
 }
