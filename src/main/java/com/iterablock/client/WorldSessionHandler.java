@@ -4,6 +4,7 @@ import com.iterablock.client.template.LoadedLitematicManager;
 import com.iterablock.client.tool.AreaSelectionState;
 import com.iterablock.client.tool.BezierCurveState;
 import com.iterablock.client.tool.CommandFeedbackSilencer;
+import com.iterablock.client.tool.PlacementCommandQueue;
 import com.iterablock.client.tool.SymmetryPlacementState;
 
 import net.neoforged.bus.api.SubscribeEvent;
@@ -26,5 +27,6 @@ public class WorldSessionHandler {
         BezierCurveState.clear();
         SymmetryPlacementState.clear();
         CommandFeedbackSilencer.getInstance().clear();
+        PlacementCommandQueue.getInstance().clear();
     }
 }

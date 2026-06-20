@@ -1,6 +1,7 @@
 package com.iterablock.client.tool;
 
 import java.util.List;
+import java.util.ArrayList;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -74,11 +75,13 @@ public final class SymmetryPlacementHandler {
             return;
         }
 
-        CommandFeedbackSilencer.getInstance().expectPlacementFeedback(placements.size());
+        List<String> commands = new ArrayList<>(placements.size());
 
         for (SymmetryPlacementState.MirrorPlacement placement : placements) {
-            minecraft.player.connection.sendCommand(toSetBlockCommand(placement.pos(), mirrorState(state, placement)));
+            commands.add(toSetBlockCommand(placement.pos(), mirrorState(state, placement)));
         }
+
+        PlacementCommandQueue.getInstance().enqueue(commands);
     }
 
     private static void mirrorOpenStateInteraction(Minecraft minecraft, BlockPos interactedPos, BlockState interactedState) {
@@ -107,15 +110,17 @@ public final class SymmetryPlacementHandler {
         }
 
         BlockState toggledState = interactedState.cycle(BlockStateProperties.OPEN);
-        CommandFeedbackSilencer.getInstance().expectPlacementFeedback(mirroredCount);
+        List<String> commands = new ArrayList<>(mirroredCount);
 
         for (SymmetryPlacementState.MirrorPlacement placement : placements) {
             BlockState targetState = minecraft.level.getBlockState(placement.pos());
 
             if (targetState.getBlock() == interactedState.getBlock()) {
-                minecraft.player.connection.sendCommand(toSetBlockCommand(placement.pos(), mirrorState(toggledState, placement)));
+                commands.add(toSetBlockCommand(placement.pos(), mirrorState(toggledState, placement)));
             }
         }
+
+        PlacementCommandQueue.getInstance().enqueue(commands);
     }
 
     @SubscribeEvent
@@ -145,11 +150,13 @@ public final class SymmetryPlacementHandler {
             return;
         }
 
-        CommandFeedbackSilencer.getInstance().expectPlacementFeedback(placements.size());
+        List<String> commands = new ArrayList<>(placements.size());
 
         for (SymmetryPlacementState.MirrorPlacement placement : placements) {
-            minecraft.player.connection.sendCommand(toClearBlockCommand(placement.pos()));
+            commands.add(toClearBlockCommand(placement.pos()));
         }
+
+        PlacementCommandQueue.getInstance().enqueue(commands);
     }
 
     private static BlockState mirrorState(BlockState state, SymmetryPlacementState.MirrorPlacement placement) {

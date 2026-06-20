@@ -23,7 +23,6 @@ import net.minecraft.world.level.block.state.properties.Property;
 public class LitematicaSchematicReader {
     private static final int MAX_SUPPORTED_VERSION = 7;
     private static final int PALETTE_PREVIEW_LIMIT = 6;
-    private static final int MAX_RENDER_BLOCKS = 8192;
 
     private LitematicaSchematicReader() {
     }
@@ -143,7 +142,7 @@ public class LitematicaSchematicReader {
 
         int bits = Math.max(2, Integer.SIZE - Integer.numberOfLeadingZeros(palette.size() - 1));
 
-        for (int index = 0; index < volume && blocks.size() < MAX_RENDER_BLOCKS; index++) {
+        for (int index = 0; index < volume; index++) {
             int paletteId = getPackedValue(blockStates, index, bits);
 
             if (paletteId < 0 || paletteId >= palette.size()) {

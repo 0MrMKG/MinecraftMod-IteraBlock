@@ -29,33 +29,21 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 
 public class SchematicProjectionRenderer {
     private static final SchematicProjectionRenderer INSTANCE = new SchematicProjectionRenderer();
-    private static final int MAX_RENDERED_BOXES = 8192;
+    private static final double OVERLAY_EPSILON = 0.003D;
+    private static final float PROJECTION_MODEL_SCALE = 1.003F;
     private static final int BOUNDING_BOX_COLOR = 0xD08AE8FF;
-    private static final int TARGET_FILL_COLOR = 0x4400FF66;
     private static final int TARGET_LINE_COLOR = 0xF000FF66;
-    private static final int AREA_SELECTION_FILL_RGB = 0x9EB8A6;
-    private static final int AREA_SELECTION_LINE_COLOR = 0xF4FFFFFF;
-    private static final int AREA_FIRST_POINT_FILL_COLOR = 0x66AFD7E8;
-    private static final int AREA_FIRST_POINT_ACTIVE_FILL_COLOR = 0x995C9FB8;
-    private static final int AREA_FIRST_POINT_LINE_COLOR = 0xFFFFFFFF;
-    private static final int AREA_FIRST_POINT_ACTIVE_LINE_COLOR = 0xFFFFFFFF;
-    private static final int AREA_SECOND_POINT_FILL_COLOR = 0x66E8D9AF;
-    private static final int AREA_SECOND_POINT_ACTIVE_FILL_COLOR = 0x99B89F5C;
-    private static final int AREA_SECOND_POINT_LINE_COLOR = 0xFFFFFFFF;
-    private static final int AREA_SECOND_POINT_ACTIVE_LINE_COLOR = 0xFFFFFFFF;
+    private static final int AREA_SELECTION_LINE_COLOR = 0xF4D6FFF0;
+    private static final int AREA_FIRST_POINT_LINE_COLOR = 0xFFEAFBFF;
+    private static final int AREA_FIRST_POINT_ACTIVE_LINE_COLOR = 0xFFBFE3F6;
+    private static final int AREA_SECOND_POINT_LINE_COLOR = 0xFFFFF1D6;
+    private static final int AREA_SECOND_POINT_ACTIVE_LINE_COLOR = 0xFFF6D6A8;
     private static final int BEZIER_CURVE_LINE_COLOR = 0xE0F3C6D3;
-    private static final int BEZIER_CURVE_FILL_COLOR = 0x33F3C6D3;
     private static final int BEZIER_POINT_LINE_COLOR = 0xF0F6D6A8;
-    private static final int BEZIER_POINT_FILL_COLOR = 0x55F6D6A8;
     private static final int BEZIER_PREVIOUS_POINT_LINE_COLOR = 0xF0FF4A4A;
-    private static final int BEZIER_PREVIOUS_POINT_FILL_COLOR = 0x44FF4A4A;
-    private static final int SYMMETRY_AREA_FILL_RGB = 0x6FAF9A;
-    private static final int SYMMETRY_LOCKED_AREA_FILL_RGB = 0xFFFFFF;
     private static final int SYMMETRY_AREA_LINE_COLOR = 0xB0D6FFF0;
-    private static final int SYMMETRY_LOCKED_LINE_COLOR = 0x99FFFFFF;
-    private static final int SYMMETRY_CENTER_UNLOCKED_FILL_COLOR = 0x99BFE3D7;
-    private static final int SYMMETRY_CENTER_LOCKED_FILL_COLOR = 0xB3C84040;
-    private static final int SYMMETRY_CENTER_LINE_COLOR = 0xF0FFFFFF;
+    private static final int SYMMETRY_LOCKED_LINE_COLOR = 0x99EAFBFF;
+    private static final int SYMMETRY_CENTER_LINE_COLOR = 0xF0D6FFF0;
     private LoadedLitematicManager.Entry cachedBoundsEntry;
     private int cachedBoundsRotation = -1;
     private SchematicPlacementState.MirrorAxis cachedBoundsMirror = SchematicPlacementState.MirrorAxis.NONE;
@@ -121,8 +109,8 @@ public class SchematicProjectionRenderer {
 
         this.renderAreaSelection(poseStack);
         this.renderSymmetryPlacement(poseStack);
-        this.renderActivePlacement(minecraft, poseStack, hasToolItem);
-        this.renderPlacementTarget(poseStack, hasToolItem);
+        this.renderActivePlacement(minecraft, poseStack);
+        this.renderPlacementTarget(poseStack);
         this.renderBezierCurve(minecraft, poseStack, camera);
         poseStack.popPose();
     }
@@ -137,8 +125,8 @@ public class SchematicProjectionRenderer {
         return false;
     }
 
-    private void renderActivePlacement(Minecraft minecraft, PoseStack poseStack, boolean hasToolItem) {
-        if (!hasToolItem || !SchematicPlacementState.hasPlacement()) {
+    private void renderActivePlacement(Minecraft minecraft, PoseStack poseStack) {
+        if (!SchematicPlacementState.hasPlacement()) {
             return;
         }
 
@@ -150,20 +138,9 @@ public class SchematicProjectionRenderer {
         }
 
         ProjectionSnapshot snapshot = this.getProjectionSnapshot(minecraft, origin, entry);
-        MultiBufferSource.BufferSource bufferSource = minecraft.renderBuffers().bufferSource();
 
         if (!snapshot.blocks().isEmpty()) {
-            RenderSystem.enableBlend();
-            RenderSystem.defaultBlendFunc();
-            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 0.8F);
-
-            for (RenderBlock block : snapshot.blocks()) {
-                this.renderBlock(minecraft, poseStack, bufferSource, block.pos(), block.state());
-            }
-
-            bufferSource.endBatch();
-            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-            RenderSystem.disableBlend();
+            this.renderProjectionBlocks(minecraft, poseStack, snapshot.blocks());
         }
 
         for (Bounds bounds : snapshot.bounds()) {
@@ -278,16 +255,10 @@ public class SchematicProjectionRenderer {
     }
 
     private void collectPlacementBlocks(Minecraft minecraft, BlockPos origin, LitematicaSchematicInfo info, List<RenderBlock> renderBlocks) {
-        int rendered = 0;
-
         for (LitematicaSchematicInfo.Region region : info.regions()) {
             List<LitematicaSchematicInfo.BlockSample> samples = region.blocks();
 
             for (LitematicaSchematicInfo.BlockSample block : samples) {
-                if (rendered++ >= MAX_RENDERED_BOXES) {
-                    break;
-                }
-
                 BlockPos pos = origin.offset(SchematicPlacementState.transformBlockOffset(region.position(), block.pos(), region.size()));
                 BlockState state = SchematicPlacementState.transformState(block.state());
 
@@ -297,22 +268,34 @@ public class SchematicProjectionRenderer {
 
                 renderBlocks.add(new RenderBlock(pos, state));
             }
-
-            if (rendered >= MAX_RENDERED_BOXES) {
-                break;
-            }
         }
     }
 
-    private void renderBlock(Minecraft minecraft, PoseStack poseStack, MultiBufferSource bufferSource, BlockPos pos, BlockState state) {
-        if (state.isAir()) {
-            return;
+    private void renderProjectionBlocks(Minecraft minecraft, PoseStack poseStack, List<RenderBlock> blocks) {
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.depthMask(false);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 0.8F);
+        MultiBufferSource.BufferSource bufferSource = minecraft.renderBuffers().bufferSource();
+
+        for (RenderBlock block : blocks) {
+            if (block.state().isAir()) {
+                continue;
+            }
+
+            BlockPos pos = block.pos();
+            poseStack.pushPose();
+            poseStack.translate(pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D);
+            poseStack.scale(PROJECTION_MODEL_SCALE, PROJECTION_MODEL_SCALE, PROJECTION_MODEL_SCALE);
+            poseStack.translate(-0.5D, -0.5D, -0.5D);
+            minecraft.getBlockRenderer().renderSingleBlock(block.state(), poseStack, bufferSource, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, RenderType.translucent());
+            poseStack.popPose();
         }
 
-        poseStack.pushPose();
-        poseStack.translate(pos.getX(), pos.getY(), pos.getZ());
-        minecraft.getBlockRenderer().renderSingleBlock(state, poseStack, bufferSource, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, RenderType.translucent());
-        poseStack.popPose();
+        bufferSource.endBatch();
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.depthMask(true);
+        RenderSystem.disableBlend();
     }
 
     private Bounds getPlacementBounds(BlockPos origin, LoadedLitematicManager.Entry entry) {
@@ -343,7 +326,6 @@ public class SchematicProjectionRenderer {
     }
 
     private Bounds findLocalPlacementBounds(LitematicaSchematicInfo info) {
-        int rendered = 0;
         Integer minX = null;
         int minY = 0;
         int minZ = 0;
@@ -353,10 +335,6 @@ public class SchematicProjectionRenderer {
 
         for (LitematicaSchematicInfo.Region region : info.regions()) {
             for (LitematicaSchematicInfo.BlockSample block : region.blocks()) {
-                if (rendered++ >= MAX_RENDERED_BOXES) {
-                    break;
-                }
-
                 BlockState state = SchematicPlacementState.transformState(block.state());
 
                 if (state.isAir()) {
@@ -381,17 +359,13 @@ public class SchematicProjectionRenderer {
                     maxZ = Math.max(maxZ, pos.getZ() + 1);
                 }
             }
-
-            if (rendered >= MAX_RENDERED_BOXES) {
-                break;
-            }
         }
 
         return minX == null ? null : new Bounds(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
-    private void renderPlacementTarget(PoseStack poseStack, boolean hasToolItem) {
-        if (!hasToolItem || !SchematicPlacementState.hasPlacement()) {
+    private void renderPlacementTarget(PoseStack poseStack) {
+        if (!SchematicPlacementState.hasPlacement()) {
             return;
         }
 
@@ -401,7 +375,7 @@ public class SchematicProjectionRenderer {
             return;
         }
 
-        this.renderFilledBox(poseStack, target.getX(), target.getY(), target.getZ(), target.getX() + 1, target.getY() + 1, target.getZ() + 1, TARGET_FILL_COLOR);
+        this.renderFilledBox(poseStack, target.getX(), target.getY(), target.getZ(), target.getX() + 1, target.getY() + 1, target.getZ() + 1, this.getConfiguredFillColor());
         this.renderLineBox(poseStack, target.getX(), target.getY(), target.getZ(), target.getX() + 1, target.getY() + 1, target.getZ() + 1, TARGET_LINE_COLOR);
     }
 
@@ -415,16 +389,14 @@ public class SchematicProjectionRenderer {
 
         if (first != null) {
             boolean active = AreaSelectionState.getActiveCorner() == AreaSelectionState.Corner.FIRST;
-            int fillColor = active ? AREA_FIRST_POINT_ACTIVE_FILL_COLOR : AREA_FIRST_POINT_FILL_COLOR;
             int lineColor = active ? AREA_FIRST_POINT_ACTIVE_LINE_COLOR : AREA_FIRST_POINT_LINE_COLOR;
-            this.renderAreaPointBox(poseStack, first, fillColor, lineColor);
+            this.renderAreaPointBox(poseStack, first, lineColor);
         }
 
         if (second != null) {
             boolean active = AreaSelectionState.getActiveCorner() == AreaSelectionState.Corner.SECOND;
-            int fillColor = active ? AREA_SECOND_POINT_ACTIVE_FILL_COLOR : AREA_SECOND_POINT_FILL_COLOR;
             int lineColor = active ? AREA_SECOND_POINT_ACTIVE_LINE_COLOR : AREA_SECOND_POINT_LINE_COLOR;
-            this.renderAreaPointBox(poseStack, second, fillColor, lineColor);
+            this.renderAreaPointBox(poseStack, second, lineColor);
         }
 
         if (first == null || second == null) {
@@ -437,18 +409,18 @@ public class SchematicProjectionRenderer {
         int maxX = Math.max(first.getX(), second.getX()) + 1;
         int maxY = Math.max(first.getY(), second.getY()) + 1;
         int maxZ = Math.max(first.getZ(), second.getZ()) + 1;
-        this.renderFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, this.getConfiguredFillColor(AREA_SELECTION_FILL_RGB));
+        this.renderFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, this.getConfiguredFillColor());
         this.renderLineBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, AREA_SELECTION_LINE_COLOR);
     }
 
-    private void renderAreaPointBox(PoseStack poseStack, BlockPos point, int fillColor, int lineColor) {
-        this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, fillColor);
+    private void renderAreaPointBox(PoseStack poseStack, BlockPos point, int lineColor) {
+        this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, this.getConfiguredFillColor());
         this.renderLineBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, lineColor);
     }
 
-    private int getConfiguredFillColor(int rgb) {
-        int alpha = Math.round(BuilderHelperClientConfig.getSelectionFillOpacity() * 255.0F / 100.0F);
-        return alpha << 24 | rgb;
+    private int getConfiguredFillColor() {
+        int alpha = Math.round(BuilderHelperClientConfig.getRenderFillOpacity() * 255.0F / 100.0F);
+        return alpha << 24 | BuilderHelperClientConfig.getRenderFillRgb();
     }
 
     private void renderSymmetryPlacement(PoseStack poseStack) {
@@ -459,15 +431,15 @@ public class SchematicProjectionRenderer {
         SymmetryPlacementState.Bounds bounds = SymmetryPlacementState.getBounds();
 
         if (bounds != null) {
-            int fillColor = this.getConfiguredFillColor(SymmetryPlacementState.isLocked() ? SYMMETRY_LOCKED_AREA_FILL_RGB : SYMMETRY_AREA_FILL_RGB);
+            int fillColor = this.getConfiguredFillColor();
             if ((fillColor >>> 24) > 0) {
-                this.renderDepthAwareFilledBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), fillColor);
+                this.renderFilledBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), fillColor);
             }
             this.renderLineBox(poseStack, bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(),
                     SymmetryPlacementState.isLocked() ? SYMMETRY_LOCKED_LINE_COLOR : SYMMETRY_AREA_LINE_COLOR);
         }
 
-        int centerFillColor = SymmetryPlacementState.isLocked() ? SYMMETRY_CENTER_LOCKED_FILL_COLOR : SYMMETRY_CENTER_UNLOCKED_FILL_COLOR;
+        int centerFillColor = this.getConfiguredFillColor();
         SymmetryPlacementState.PlaneBounds planeBounds = SymmetryPlacementState.getPlaneMarkerBounds();
 
         if (planeBounds != null) {
@@ -494,7 +466,7 @@ public class SchematicProjectionRenderer {
         List<BlockPos> previousPoints = BezierCurveState.getPreviousControlPoints();
         for (int i = 0; i < previousPoints.size(); i++) {
             BlockPos point = previousPoints.get(i);
-            this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, BEZIER_PREVIOUS_POINT_FILL_COLOR);
+            this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, this.getConfiguredFillColor());
             this.renderLineBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, BEZIER_PREVIOUS_POINT_LINE_COLOR);
             this.renderPointLabel(minecraft, poseStack, camera, point, Integer.toString(i + 1), 0xFFFF6A6A);
         }
@@ -502,13 +474,13 @@ public class SchematicProjectionRenderer {
         List<BlockPos> currentPoints = BezierCurveState.getControlPoints();
         for (int i = 0; i < currentPoints.size(); i++) {
             BlockPos point = currentPoints.get(i);
-            this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, BEZIER_POINT_FILL_COLOR);
+            this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, this.getConfiguredFillColor());
             this.renderLineBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, BEZIER_POINT_LINE_COLOR);
             this.renderPointLabel(minecraft, poseStack, camera, point, Integer.toString(i + 1), 0xFFFFF1B0);
         }
 
         for (BlockPos block : BezierCurveState.getCurveBlocks()) {
-            this.renderFilledBox(poseStack, block.getX(), block.getY(), block.getZ(), block.getX() + 1, block.getY() + 1, block.getZ() + 1, BEZIER_CURVE_FILL_COLOR);
+            this.renderFilledBox(poseStack, block.getX(), block.getY(), block.getZ(), block.getX() + 1, block.getY() + 1, block.getZ() + 1, this.getConfiguredFillColor());
             this.renderLineBox(poseStack, block.getX(), block.getY(), block.getZ(), block.getX() + 1, block.getY() + 1, block.getZ() + 1, BEZIER_CURVE_LINE_COLOR);
         }
     }
@@ -528,7 +500,14 @@ public class SchematicProjectionRenderer {
     }
 
     private void renderFilledBox(PoseStack poseStack, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {
-        this.renderDepthAwareFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, color);
+        this.renderDepthAwareFilledBox(poseStack,
+                minX - OVERLAY_EPSILON,
+                minY - OVERLAY_EPSILON,
+                minZ - OVERLAY_EPSILON,
+                maxX + OVERLAY_EPSILON,
+                maxY + OVERLAY_EPSILON,
+                maxZ + OVERLAY_EPSILON,
+                color);
     }
 
     private void renderDepthAwareFilledBox(PoseStack poseStack, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {
@@ -540,12 +519,7 @@ public class SchematicProjectionRenderer {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
         BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        this.addQuad(buffer, poseStack, minX, minY, minZ, maxX, minY, minZ, maxX, minY, maxZ, minX, minY, maxZ, color);
-        this.addQuad(buffer, poseStack, minX, maxY, minZ, minX, maxY, maxZ, maxX, maxY, maxZ, maxX, maxY, minZ, color);
-        this.addQuad(buffer, poseStack, minX, minY, minZ, minX, maxY, minZ, maxX, maxY, minZ, maxX, minY, minZ, color);
-        this.addQuad(buffer, poseStack, minX, minY, maxZ, maxX, minY, maxZ, maxX, maxY, maxZ, minX, maxY, maxZ, color);
-        this.addQuad(buffer, poseStack, minX, minY, minZ, minX, minY, maxZ, minX, maxY, maxZ, minX, maxY, minZ, color);
-        this.addQuad(buffer, poseStack, maxX, minY, minZ, maxX, maxY, minZ, maxX, maxY, maxZ, maxX, minY, maxZ, color);
+        this.addBoxQuads(buffer, poseStack, minX, minY, minZ, maxX, maxY, maxZ, color);
         BufferUploader.drawWithShader(buffer.buildOrThrow());
 
         RenderSystem.depthMask(true);
@@ -553,7 +527,23 @@ public class SchematicProjectionRenderer {
         RenderSystem.disableBlend();
     }
 
+    private void addBoxQuads(BufferBuilder buffer, PoseStack poseStack, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {
+        this.addQuad(buffer, poseStack, minX, minY, minZ, maxX, minY, minZ, maxX, minY, maxZ, minX, minY, maxZ, color);
+        this.addQuad(buffer, poseStack, minX, maxY, minZ, minX, maxY, maxZ, maxX, maxY, maxZ, maxX, maxY, minZ, color);
+        this.addQuad(buffer, poseStack, minX, minY, minZ, minX, maxY, minZ, maxX, maxY, minZ, maxX, minY, minZ, color);
+        this.addQuad(buffer, poseStack, minX, minY, maxZ, maxX, minY, maxZ, maxX, maxY, maxZ, minX, maxY, maxZ, color);
+        this.addQuad(buffer, poseStack, minX, minY, minZ, minX, minY, maxZ, minX, maxY, maxZ, minX, maxY, minZ, color);
+        this.addQuad(buffer, poseStack, maxX, minY, minZ, maxX, maxY, minZ, maxX, maxY, maxZ, maxX, minY, maxZ, color);
+    }
+
     private void renderLineBox(PoseStack poseStack, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {
+        minX -= OVERLAY_EPSILON;
+        minY -= OVERLAY_EPSILON;
+        minZ -= OVERLAY_EPSILON;
+        maxX += OVERLAY_EPSILON;
+        maxY += OVERLAY_EPSILON;
+        maxZ += OVERLAY_EPSILON;
+
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableCull();

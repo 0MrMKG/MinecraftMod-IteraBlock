@@ -110,6 +110,22 @@ public final class ToolState {
         setLastAction(Lang.tr("iterablock.tool.action.volume_array_count", SchematicPlacementState.getVolumeArraySummary()));
     }
 
+    public static boolean adjustSchematicPlacement(Minecraft minecraft, int amount) {
+        if (mode != ToolMode.SCHEMATIC_PLACEMENT || minecraft.player == null || amount == 0 || !SchematicPlacementState.hasPlacement()) {
+            return false;
+        }
+
+        SchematicPlacementState.Axis axis = SchematicPlacementState.adjustOrigin(minecraft.player.getLookAngle(), amount);
+        BlockPos origin = SchematicPlacementState.getOrigin();
+
+        if (axis == null || origin == null) {
+            return false;
+        }
+
+        setLastAction("投影已沿 " + axis.name() + " 轴微调：" + origin.getX() + ", " + origin.getY() + ", " + origin.getZ());
+        return true;
+    }
+
     public static boolean adjustAreaSelection(Minecraft minecraft, int amount) {
         if (mode != ToolMode.AREA_COPY_PASTE || minecraft.player == null || amount == 0 || !AreaSelectionState.hasFirstCorner()) {
             return false;
@@ -687,19 +703,18 @@ public final class ToolState {
     }
 
     private static int sendPlacedBlocks(List<PlacedBlock> blocks, PlacementReplaceMode replaceMode) {
-        LocalPlayer player = Minecraft.getInstance().player;
-
-        if (player == null || Minecraft.getInstance().getConnection() == null) {
+        if (Minecraft.getInstance().player == null || Minecraft.getInstance().getConnection() == null) {
             return 0;
         }
 
         List<PlacedBlock> finalBlocks = preparePlacedBlocks(blocks);
-        CommandFeedbackSilencer.getInstance().expectPlacementFeedback(finalBlocks.size());
+        List<String> commands = new ArrayList<>(finalBlocks.size());
 
         for (PlacedBlock block : finalBlocks) {
-            player.connection.sendCommand(toSetBlockCommand(block, replaceMode));
+            commands.add(toSetBlockCommand(block, replaceMode));
         }
 
+        PlacementCommandQueue.getInstance().enqueue(commands);
         return finalBlocks.size();
     }
 
@@ -751,6 +766,10 @@ public final class ToolState {
         @Override
         public void accept(PlacedBlock block) {
             this.buffer.add(block);
+
+            if (this.buffer.size() >= PLACE_COMMAND_BATCH_SIZE) {
+                this.flush();
+            }
         }
 
         private void flush() {
@@ -817,6 +836,7 @@ public final class ToolState {
     private static String getMirrorAxisName(SchematicPlacementState.MirrorAxis axis) {
         return switch (axis) {
             case X -> "X";
+            case Y -> "Y";
             case Z -> "Z";
             case NONE -> Lang.tr("iterablock.tool.mirror.none");
         };

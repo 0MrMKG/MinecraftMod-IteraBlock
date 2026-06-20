@@ -643,7 +643,10 @@ public class GuiBuilderHelperSettings extends GuiBase {
         this.add(Category.HOTKEYS, "placeProjectionKey", "iterablock.gui.settings.keybind.place_projection", EntryType.KEYBIND, "Y");
         this.add(Category.HOTKEYS, "rotateProjectionKey", "iterablock.gui.settings.keybind.rotate_projection", EntryType.KEYBIND, "R");
         this.add(Category.HOTKEYS, "mirrorProjectionKey", "iterablock.gui.settings.keybind.mirror_projection", EntryType.KEYBIND, "G");
-        this.add(Category.VISUALS, "selectionFillOpacity", "iterablock.gui.settings.option.selection_fill_opacity", EntryType.TEXT, Integer.toString(BuilderHelperClientConfig.DEFAULT_SELECTION_FILL_OPACITY));
+        this.add(Category.VISUALS, "renderFillRed", "iterablock.gui.settings.option.render_fill_red", EntryType.TEXT, Integer.toString(BuilderHelperClientConfig.DEFAULT_RENDER_FILL_RED));
+        this.add(Category.VISUALS, "renderFillGreen", "iterablock.gui.settings.option.render_fill_green", EntryType.TEXT, Integer.toString(BuilderHelperClientConfig.DEFAULT_RENDER_FILL_GREEN));
+        this.add(Category.VISUALS, "renderFillBlue", "iterablock.gui.settings.option.render_fill_blue", EntryType.TEXT, Integer.toString(BuilderHelperClientConfig.DEFAULT_RENDER_FILL_BLUE));
+        this.add(Category.VISUALS, "renderFillOpacity", "iterablock.gui.settings.option.render_fill_opacity", EntryType.TEXT, Integer.toString(BuilderHelperClientConfig.DEFAULT_RENDER_FILL_OPACITY));
         this.add(Category.LITEMATIC, "placementRange", "iterablock.gui.settings.option.placement_range", EntryType.TEXT, "100");
         this.add(Category.LITEMATIC, "linearArrayRenderLimit", "iterablock.gui.settings.option.linear_array_render_limit", EntryType.TEXT, "5");
         this.add(Category.LITEMATIC, "volumeArrayRenderLimit", "iterablock.gui.settings.option.volume_array_render_limit", EntryType.TEXT, "3");

@@ -3,6 +3,7 @@ package com.iterablock.client;
 import com.iterablock.client.gui.HudVisibilityHandler;
 import com.iterablock.client.hotkeys.InputHandler;
 import com.iterablock.client.tool.CommandFeedbackSilencer;
+import com.iterablock.client.tool.PlacementCommandQueue;
 import com.iterablock.client.tool.SchematicProjectionRenderer;
 import com.iterablock.client.tool.SymmetryPlacementHandler;
 import com.iterablock.client.tool.ToolHudRenderer;
@@ -31,5 +32,6 @@ public class InitHandler implements IInitializationHandler {
         NeoForge.EVENT_BUS.register(SchematicProjectionRenderer.getInstance());
         NeoForge.EVENT_BUS.register(SymmetryPlacementHandler.getInstance());
         NeoForge.EVENT_BUS.register(CommandFeedbackSilencer.getInstance());
+        NeoForge.EVENT_BUS.register(PlacementCommandQueue.getInstance());
     }
 }

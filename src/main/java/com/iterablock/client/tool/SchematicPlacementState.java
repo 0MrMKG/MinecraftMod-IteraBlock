@@ -9,7 +9,14 @@ import com.iterablock.client.litematica.LitematicaSchematicInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.AttachFace;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.phys.Vec3;
 
 public final class SchematicPlacementState {
@@ -74,9 +81,33 @@ public final class SchematicPlacementState {
             return mirrorAxis;
         }
 
-        MirrorAxis axis = Math.abs(lookDirection.x) >= Math.abs(lookDirection.z) ? MirrorAxis.X : MirrorAxis.Z;
+        MirrorAxis axis = switch (getLookAxis(lookDirection)) {
+            case X -> MirrorAxis.X;
+            case Y -> MirrorAxis.Y;
+            case Z -> MirrorAxis.Z;
+        };
         mirrorAxis = mirrorAxis == axis ? MirrorAxis.NONE : axis;
         return mirrorAxis;
+    }
+
+    public static Axis adjustOrigin(Vec3 lookDirection, int amount) {
+        if (!hasPlacement() || amount == 0) {
+            return null;
+        }
+
+        Axis axis = getLookAxis(lookDirection);
+        int signedAmount = switch (axis) {
+            case X -> signFrom(lookDirection.x) * amount;
+            case Y -> signFrom(lookDirection.y) * amount;
+            case Z -> signFrom(lookDirection.z) * amount;
+        };
+
+        origin = switch (axis) {
+            case X -> origin.offset(signedAmount, 0, 0);
+            case Y -> origin.offset(0, signedAmount, 0);
+            case Z -> origin.offset(0, 0, signedAmount);
+        };
+        return axis;
     }
 
     public static void adjustLinearArray(Vec3 lookDirection, int amount) {
@@ -293,7 +324,7 @@ public final class SchematicPlacementState {
         BlockPos oriented = orientLocalPos(localPos, regionSize);
         BlockPos offset = regionPosition.offset(oriented);
         int x = mirrorAxis == MirrorAxis.X ? -offset.getX() : offset.getX();
-        int y = offset.getY();
+        int y = mirrorAxis == MirrorAxis.Y ? -offset.getY() : offset.getY();
         int z = mirrorAxis == MirrorAxis.Z ? -offset.getZ() : offset.getZ();
 
         return switch (rotationSteps & 3) {
@@ -313,6 +344,8 @@ public final class SchematicPlacementState {
 
         if (mirrorAxis == MirrorAxis.X) {
             rotated = rotated.mirror(Mirror.FRONT_BACK);
+        } else if (mirrorAxis == MirrorAxis.Y) {
+            rotated = mirrorStateVertically(rotated);
         } else if (mirrorAxis == MirrorAxis.Z) {
             rotated = rotated.mirror(Mirror.LEFT_RIGHT);
         }
@@ -322,6 +355,51 @@ public final class SchematicPlacementState {
         }
 
         return rotated;
+    }
+
+    private static BlockState mirrorStateVertically(BlockState state) {
+        BlockState mirrored = state;
+
+        for (DirectionProperty property : mirrored.getProperties().stream()
+                .filter(DirectionProperty.class::isInstance)
+                .map(DirectionProperty.class::cast)
+                .toList()) {
+            if (mirrored.getValue(property).getAxis() == net.minecraft.core.Direction.Axis.Y) {
+                mirrored = mirrored.setValue(property, mirrored.getValue(property).getOpposite());
+            }
+        }
+
+        if (mirrored.hasProperty(BlockStateProperties.HALF)) {
+            Half half = mirrored.getValue(BlockStateProperties.HALF);
+            mirrored = mirrored.setValue(BlockStateProperties.HALF, half == Half.TOP ? Half.BOTTOM : Half.TOP);
+        }
+
+        if (mirrored.hasProperty(SlabBlock.TYPE)) {
+            SlabType slabType = mirrored.getValue(SlabBlock.TYPE);
+
+            if (slabType == SlabType.TOP) {
+                mirrored = mirrored.setValue(SlabBlock.TYPE, SlabType.BOTTOM);
+            } else if (slabType == SlabType.BOTTOM) {
+                mirrored = mirrored.setValue(SlabBlock.TYPE, SlabType.TOP);
+            }
+        }
+
+        if (mirrored.hasProperty(BlockStateProperties.ATTACH_FACE)) {
+            AttachFace attachFace = mirrored.getValue(BlockStateProperties.ATTACH_FACE);
+
+            if (attachFace == AttachFace.FLOOR) {
+                mirrored = mirrored.setValue(BlockStateProperties.ATTACH_FACE, AttachFace.CEILING);
+            } else if (attachFace == AttachFace.CEILING) {
+                mirrored = mirrored.setValue(BlockStateProperties.ATTACH_FACE, AttachFace.FLOOR);
+            }
+        }
+
+        if (mirrored.hasProperty(BlockStateProperties.DOUBLE_BLOCK_HALF)) {
+            DoubleBlockHalf half = mirrored.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF);
+            mirrored = mirrored.setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, half == DoubleBlockHalf.UPPER ? DoubleBlockHalf.LOWER : DoubleBlockHalf.UPPER);
+        }
+
+        return mirrored;
     }
 
     public static void clearIfEntry(LoadedLitematicManager.Entry removedEntry) {
@@ -348,10 +426,18 @@ public final class SchematicPlacementState {
     }
 
     private static BlockPos orientLocalPos(BlockPos localPos, BlockPos regionSize) {
-        int x = regionSize.getX() < 0 ? -localPos.getX() : localPos.getX();
-        int y = regionSize.getY() < 0 ? -localPos.getY() : localPos.getY();
-        int z = regionSize.getZ() < 0 ? -localPos.getZ() : localPos.getZ();
+        int x = orientLocalAxis(localPos.getX(), regionSize.getX());
+        int y = orientLocalAxis(localPos.getY(), regionSize.getY());
+        int z = orientLocalAxis(localPos.getZ(), regionSize.getZ());
         return new BlockPos(x, y, z);
+    }
+
+    private static int orientLocalAxis(int local, int size) {
+        if (size >= 0) {
+            return local;
+        }
+
+        return local - (Math.abs(size) - 1);
     }
 
     private static int clampLinearArrayCount(int count) {
@@ -387,6 +473,7 @@ public final class SchematicPlacementState {
     public enum MirrorAxis {
         NONE,
         X,
+        Y,
         Z
     }
 }

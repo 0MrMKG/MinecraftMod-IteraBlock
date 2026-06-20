@@ -26,6 +26,10 @@ public final class BuilderHelperClientConfig {
     public static final int DEFAULT_BEZIER_PLACEMENT_WIDTH = 1;
     public static final int DEFAULT_BEZIER_CONTROL_POINT_COUNT = 4;
     public static final int DEFAULT_SELECTION_FILL_OPACITY = 12;
+    public static final int DEFAULT_RENDER_FILL_RED = 255;
+    public static final int DEFAULT_RENDER_FILL_GREEN = 255;
+    public static final int DEFAULT_RENDER_FILL_BLUE = 255;
+    public static final int DEFAULT_RENDER_FILL_OPACITY = 30;
     public static final boolean DEFAULT_BEZIER_PLACE_NBT_MODE = false;
     private static final int MIN_PLACEMENT_RANGE = 1;
     private static final int MAX_PLACEMENT_RANGE = 512;
@@ -49,6 +53,10 @@ public final class BuilderHelperClientConfig {
     private static final int MAX_BEZIER_CONTROL_POINT_COUNT = 64;
     private static final int MIN_SELECTION_FILL_OPACITY = 0;
     private static final int MAX_SELECTION_FILL_OPACITY = 100;
+    private static final int MIN_RENDER_FILL_CHANNEL = 0;
+    private static final int MAX_RENDER_FILL_CHANNEL = 255;
+    private static final int MIN_RENDER_FILL_OPACITY = 0;
+    private static final int MAX_RENDER_FILL_OPACITY = 100;
     private static final String PLACEMENT_RANGE_KEY = "placementRange";
     private static final String LINEAR_ARRAY_RENDER_LIMIT_KEY = "linearArrayRenderLimit";
     private static final String VOLUME_ARRAY_RENDER_LIMIT_KEY = "volumeArrayRenderLimit";
@@ -71,6 +79,10 @@ public final class BuilderHelperClientConfig {
     private static final String BEZIER_CONTROL_POINT_COUNT_KEY = "bezierControlPointCount";
     private static final String BEZIER_PLACE_NBT_MODE_KEY = "bezierPlaceNbtMode";
     private static final String SELECTION_FILL_OPACITY_KEY = "selectionFillOpacity";
+    private static final String RENDER_FILL_RED_KEY = "renderFillRed";
+    private static final String RENDER_FILL_GREEN_KEY = "renderFillGreen";
+    private static final String RENDER_FILL_BLUE_KEY = "renderFillBlue";
+    private static final String RENDER_FILL_OPACITY_KEY = "renderFillOpacity";
 
     private BuilderHelperClientConfig() {
     }
@@ -128,6 +140,26 @@ public final class BuilderHelperClientConfig {
 
     public static int getSelectionFillOpacity() {
         return getIntValue(SELECTION_FILL_OPACITY_KEY, DEFAULT_SELECTION_FILL_OPACITY, MIN_SELECTION_FILL_OPACITY, MAX_SELECTION_FILL_OPACITY);
+    }
+
+    public static int getRenderFillRed() {
+        return getIntValue(RENDER_FILL_RED_KEY, DEFAULT_RENDER_FILL_RED, MIN_RENDER_FILL_CHANNEL, MAX_RENDER_FILL_CHANNEL);
+    }
+
+    public static int getRenderFillGreen() {
+        return getIntValue(RENDER_FILL_GREEN_KEY, DEFAULT_RENDER_FILL_GREEN, MIN_RENDER_FILL_CHANNEL, MAX_RENDER_FILL_CHANNEL);
+    }
+
+    public static int getRenderFillBlue() {
+        return getIntValue(RENDER_FILL_BLUE_KEY, DEFAULT_RENDER_FILL_BLUE, MIN_RENDER_FILL_CHANNEL, MAX_RENDER_FILL_CHANNEL);
+    }
+
+    public static int getRenderFillOpacity() {
+        return getIntValue(RENDER_FILL_OPACITY_KEY, DEFAULT_RENDER_FILL_OPACITY, MIN_RENDER_FILL_OPACITY, MAX_RENDER_FILL_OPACITY);
+    }
+
+    public static int getRenderFillRgb() {
+        return getRenderFillRed() << 16 | getRenderFillGreen() << 8 | getRenderFillBlue();
     }
 
     public static void setRandomPlacementRadius(int value) {

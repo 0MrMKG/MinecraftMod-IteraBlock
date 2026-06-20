@@ -131,6 +131,7 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
         if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
             if (ToolState.getMode() == ToolMode.AREA_COPY_PASTE) {
                 ToolState.toggleAreaSelectionReference();
+                return true;
             }
             this.wheelBypass = true;
             return true;
@@ -171,6 +172,10 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
 
         if (ToolState.getMode() == ToolMode.AREA_COPY_PASTE) {
             return ToolState.adjustAreaSelection(minecraft, amount > 0.0 ? 1 : -1);
+        }
+
+        if (ToolState.getMode() == ToolMode.SCHEMATIC_PLACEMENT) {
+            return ToolState.adjustSchematicPlacement(minecraft, amount > 0.0 ? 1 : -1);
         }
 
         if (ToolState.getMode() == ToolMode.LINEAR_ARRAY) {
