@@ -65,8 +65,19 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return ToolState.placeBezierCurve(minecraft);
         }
 
+        if (ToolState.isRandomAreaMode()
+                && VanillaKeyMappings.matchesPlaceProjection(keyCode, scanCode)
+                && canHandleBezierPlacementInput(minecraft)) {
+            return ToolState.placeRandomAreaBlocks(minecraft);
+        }
+
         if (!canHandleToolInput(minecraft)) {
             return false;
+        }
+
+        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_Z) {
+            this.wheelBypass = true;
+            return true;
         }
 
         if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_X && ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {
@@ -79,6 +90,22 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
 
         if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_V && ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {
             return ToolState.toggleSymmetryParity();
+        }
+
+        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C && ToolState.getMode() == ToolMode.RING_PLACEMENT) {
+            return ToolState.adjustRingCount(-1);
+        }
+
+        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_V && ToolState.getMode() == ToolMode.RING_PLACEMENT) {
+            return ToolState.adjustRingCount(1);
+        }
+
+        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C && ToolState.getMode() == ToolMode.ARRAY_PLACEMENT) {
+            return ToolState.toggleArrayMode();
+        }
+
+        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C && ToolState.getMode() == ToolMode.RANDOM_SCHEMATIC_PLACEMENT) {
+            return ToolState.toggleRandomPlacementMode();
         }
 
         if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C && ToolState.getMode() == ToolMode.AREA_COPY_PASTE) {
@@ -128,13 +155,19 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return ToolState.toggleSymmetryLock();
         }
 
+        if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && ToolState.getMode() == ToolMode.SCHEMATIC_PLACEMENT) {
+            return ToolState.toggleSchematicPlacementPointAdjustment();
+        }
+
+        if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && ToolState.isRandomAreaMode()) {
+            return ToolState.toggleRandomAreaLock();
+        }
+
         if (mouseButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
             if (ToolState.getMode() == ToolMode.AREA_COPY_PASTE) {
                 ToolState.toggleAreaSelectionReference();
                 return true;
             }
-            this.wheelBypass = true;
-            return true;
         }
 
         if (minecraft.options.keyAttack.matchesMouse(mouseButton)) {
@@ -178,7 +211,12 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return ToolState.adjustSchematicPlacement(minecraft, amount > 0.0 ? 1 : -1);
         }
 
-        if (ToolState.getMode() == ToolMode.LINEAR_ARRAY) {
+        if (ToolState.isRandomAreaMode()) {
+            return ToolState.adjustAreaSelection(minecraft, amount > 0.0 ? 1 : -1);
+        }
+
+        if (ToolState.getMode() == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.LINEAR) {
             if (!SchematicPlacementState.hasPlacement()) {
                 return false;
             }
@@ -187,13 +225,18 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return true;
         }
 
-        if (ToolState.getMode() == ToolMode.VOLUME_ARRAY) {
+        if (ToolState.getMode() == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.VOLUME) {
             if (!SchematicPlacementState.hasPlacement()) {
                 return false;
             }
 
             ToolState.adjustVolumeArray(minecraft, amount > 0.0 ? 1 : -1);
             return true;
+        }
+
+        if (ToolState.getMode() == ToolMode.RING_PLACEMENT) {
+            return ToolState.adjustRingRadius(minecraft, amount > 0.0 ? 1 : -1);
         }
 
         if (ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {

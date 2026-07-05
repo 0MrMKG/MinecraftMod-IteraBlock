@@ -20,6 +20,7 @@ import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.properties.SlabType;
@@ -31,9 +32,12 @@ import net.minecraft.world.item.Items;
 public final class ToolState {
     private static final int PLACE_COMMAND_BATCH_SIZE = 256;
     private static final int FOLLOW_PREVIEW_RANGE = 64;
+    private static final double RANDOM_AREA_REPLACE_CHANCE = 0.35D;
     private static final Path TEMPORARY_AREA_PATH = Path.of(".iterablock-memory", "temporary-area.litematic").toAbsolutePath().normalize();
     private static final Random RANDOM = new Random();
     private static ToolMode mode = ToolMode.AREA_COPY_PASTE;
+    private static RandomPlacementMode randomPlacementMode = RandomPlacementMode.SCHEMATIC;
+    private static boolean randomAreaLocked;
     private static String lastAction = "";
     private static boolean placeSchematicImmediately;
 
@@ -58,10 +62,59 @@ public final class ToolState {
         }
 
         mode = newMode;
-        if (mode == ToolMode.LINEAR_ARRAY || mode == ToolMode.VOLUME_ARRAY) {
-            SchematicPlacementState.resetArrayCounts();
+        if (mode != ToolMode.SCHEMATIC_PLACEMENT) {
+            SchematicPlacementState.stopPlacementPointAdjustment();
+        }
+
+        if (mode == ToolMode.ARRAY_PLACEMENT) {
+            SchematicPlacementState.resetArrayMode();
+        }
+        if (mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT) {
+            randomPlacementMode = RandomPlacementMode.SCHEMATIC;
+            randomAreaLocked = false;
         }
         setLastAction(Lang.tr("iterablock.tool.action.mode_changed", mode.getDisplayName()));
+    }
+
+    public static RandomPlacementMode getRandomPlacementMode() {
+        return randomPlacementMode;
+    }
+
+    public static boolean isRandomAreaMode() {
+        return mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT && randomPlacementMode == RandomPlacementMode.AREA_BLOCK;
+    }
+
+    public static boolean isRandomAreaLocked() {
+        return randomAreaLocked;
+    }
+
+    public static boolean toggleRandomPlacementMode() {
+        if (mode != ToolMode.RANDOM_SCHEMATIC_PLACEMENT) {
+            return false;
+        }
+
+        randomPlacementMode = randomPlacementMode == RandomPlacementMode.SCHEMATIC
+                ? RandomPlacementMode.AREA_BLOCK
+                : RandomPlacementMode.SCHEMATIC;
+        randomAreaLocked = false;
+        setLastAction(Lang.tr("iterablock.tool.action.random_mode",
+                Lang.tr(randomPlacementMode == RandomPlacementMode.SCHEMATIC
+                        ? "iterablock.tool.random.mode.schematic"
+                        : "iterablock.tool.random.mode.area_block")));
+        return true;
+    }
+
+    public static boolean toggleRandomAreaLock() {
+        if (!isRandomAreaMode() || !AreaSelectionState.hasSelection()) {
+            setLastAction(Lang.tr("iterablock.tool.action.random_area_need_selection"));
+            return true;
+        }
+
+        randomAreaLocked = !randomAreaLocked;
+        setLastAction(Lang.tr(randomAreaLocked
+                ? "iterablock.tool.action.random_area_locked"
+                : "iterablock.tool.action.random_area_unlocked"));
+        return true;
     }
 
     public static void cycleMode(boolean forward) {
@@ -93,7 +146,11 @@ public final class ToolState {
     }
 
     public static void adjustLinearArray(Minecraft minecraft, int amount) {
-        if (mode != ToolMode.LINEAR_ARRAY || minecraft.player == null || amount == 0 || !SchematicPlacementState.hasPlacement()) {
+        if (mode != ToolMode.ARRAY_PLACEMENT
+                || SchematicPlacementState.getArrayMode() != SchematicPlacementState.ArrayMode.LINEAR
+                || minecraft.player == null
+                || amount == 0
+                || !SchematicPlacementState.hasPlacement()) {
             return;
         }
 
@@ -102,7 +159,11 @@ public final class ToolState {
     }
 
     public static void adjustVolumeArray(Minecraft minecraft, int amount) {
-        if (mode != ToolMode.VOLUME_ARRAY || minecraft.player == null || amount == 0 || !SchematicPlacementState.hasPlacement()) {
+        if (mode != ToolMode.ARRAY_PLACEMENT
+                || SchematicPlacementState.getArrayMode() != SchematicPlacementState.ArrayMode.VOLUME
+                || minecraft.player == null
+                || amount == 0
+                || !SchematicPlacementState.hasPlacement()) {
             return;
         }
 
@@ -110,24 +171,81 @@ public final class ToolState {
         setLastAction(Lang.tr("iterablock.tool.action.volume_array_count", SchematicPlacementState.getVolumeArraySummary()));
     }
 
-    public static boolean adjustSchematicPlacement(Minecraft minecraft, int amount) {
-        if (mode != ToolMode.SCHEMATIC_PLACEMENT || minecraft.player == null || amount == 0 || !SchematicPlacementState.hasPlacement()) {
+    public static boolean toggleArrayMode() {
+        if (mode != ToolMode.ARRAY_PLACEMENT) {
             return false;
         }
 
-        SchematicPlacementState.Axis axis = SchematicPlacementState.adjustOrigin(minecraft.player.getLookAngle(), amount);
-        BlockPos origin = SchematicPlacementState.getOrigin();
+        SchematicPlacementState.ArrayMode arrayMode = SchematicPlacementState.toggleArrayMode();
+        SchematicProjectionRenderer.getInstance().clearCache();
+        setLastAction(Lang.tr("iterablock.tool.action.array_mode",
+                Lang.tr(arrayMode == SchematicPlacementState.ArrayMode.LINEAR
+                        ? "iterablock.tool.array.mode.linear"
+                        : "iterablock.tool.array.mode.volume")));
+        return true;
+    }
+
+    public static boolean adjustRingRadius(Minecraft minecraft, int amount) {
+        if (mode != ToolMode.RING_PLACEMENT || minecraft.player == null || amount == 0) {
+            return false;
+        }
+
+        RingPlacementState.adjustRadius(amount);
+        SchematicProjectionRenderer.getInstance().clearCache();
+        setLastAction("\u5706\u73af\u534a\u5f84\uff1a" + RingPlacementState.getRadius());
+        return true;
+    }
+
+    public static boolean adjustRingCount(int amount) {
+        if (mode != ToolMode.RING_PLACEMENT || amount == 0) {
+            return false;
+        }
+
+        RingPlacementState.adjustCount(amount);
+        SchematicProjectionRenderer.getInstance().clearCache();
+        setLastAction("\u5706\u73af\u6570\u91cf\uff1a" + RingPlacementState.getCount());
+        return true;
+    }
+
+    public static boolean adjustSchematicPlacement(Minecraft minecraft, int amount) {
+        if (mode != ToolMode.SCHEMATIC_PLACEMENT || minecraft.player == null || amount == 0 || !SchematicPlacementState.hasPlacement() || !SchematicPlacementState.isPlacementPointAdjusting()) {
+            return false;
+        }
+
+        SchematicPlacementState.Axis axis = SchematicPlacementState.adjustPlacementOffset(minecraft.player.getLookAngle(), amount);
+        BlockPos origin = SchematicPlacementState.getPlacementOffset();
 
         if (axis == null || origin == null) {
             return false;
         }
 
-        setLastAction("投影已沿 " + axis.name() + " 轴微调：" + origin.getX() + ", " + origin.getY() + ", " + origin.getZ());
+        setLastAction("\u653e\u7f6e\u70b9\u5df2\u6cbf " + axis.name() + " \u8f74\u5fae\u8c03\uff1a" + origin.getX() + ", " + origin.getY() + ", " + origin.getZ());
+        return true;
+    }
+
+    public static boolean toggleSchematicPlacementPointAdjustment() {
+        if (mode != ToolMode.SCHEMATIC_PLACEMENT || !SchematicPlacementState.hasPlacement()) {
+            return false;
+        }
+
+        if (!SchematicPlacementState.togglePlacementPointAdjustment()) {
+            return false;
+        }
+
+        BlockPos offset = SchematicPlacementState.getPlacementOffset();
+        setLastAction(SchematicPlacementState.isPlacementPointAdjusting()
+                ? "\u653e\u7f6e\u70b9\u5fae\u8c03\uff1a\u5f00\uff08" + offset.getX() + ", " + offset.getY() + ", " + offset.getZ() + "\uff09"
+                : "\u653e\u7f6e\u70b9\u5fae\u8c03\uff1a\u5173");
         return true;
     }
 
     public static boolean adjustAreaSelection(Minecraft minecraft, int amount) {
-        if (mode != ToolMode.AREA_COPY_PASTE || minecraft.player == null || amount == 0 || !AreaSelectionState.hasFirstCorner()) {
+        boolean areaMode = mode == ToolMode.AREA_COPY_PASTE || isRandomAreaMode();
+        if (!areaMode
+                || randomAreaLocked
+                || minecraft.player == null
+                || amount == 0
+                || !AreaSelectionState.hasFirstCorner()) {
             return false;
         }
 
@@ -318,7 +436,7 @@ public final class ToolState {
             return false;
         }
 
-        if (mode == ToolMode.AREA_COPY_PASTE) {
+        if (mode == ToolMode.AREA_COPY_PASTE || (isRandomAreaMode() && !randomAreaLocked)) {
             handleAreaSelectionPrimary(minecraft);
             return true;
         }
@@ -334,9 +452,17 @@ public final class ToolState {
 
         switch (mode) {
             case AREA_COPY_PASTE -> handleAreaSelectionSecondary(minecraft);
-            case SCHEMATIC_PLACEMENT, LINEAR_ARRAY, VOLUME_ARRAY -> handleSchematicPlacementSecondary(minecraft);
+            case SCHEMATIC_PLACEMENT, ARRAY_PLACEMENT -> handleSchematicPlacementSecondary(minecraft);
+            case RING_PLACEMENT -> handleRingPlacementSecondary(minecraft);
             case BEZIER_CURVE_GENERATION -> handleBezierSecondary(minecraft);
             case SYMMETRY_PLACEMENT -> handleSymmetrySecondary(minecraft);
+            case RANDOM_SCHEMATIC_PLACEMENT -> {
+                if (isRandomAreaMode() && !randomAreaLocked) {
+                    handleAreaSelectionSecondary(minecraft);
+                } else {
+                    setLastAction(withCurrentLitematic(Lang.tr("iterablock.tool.action.mode_secondary", mode.getDisplayName())));
+                }
+            }
             default -> setLastAction(withCurrentLitematic(Lang.tr("iterablock.tool.action.mode_secondary", mode.getDisplayName())));
         }
 
@@ -349,6 +475,9 @@ public final class ToolState {
         }
 
         if (mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT) {
+            if (randomPlacementMode == RandomPlacementMode.AREA_BLOCK) {
+                return placeRandomAreaBlocks(minecraft);
+            }
             return placeRandomSchematic(minecraft);
         }
 
@@ -404,6 +533,51 @@ public final class ToolState {
         batcher.flush();
         setLastAction(Lang.tr("iterablock.tool.action.random_placed", batcher.totalSent(), BuilderHelperClientConfig.getRandomPlacementCount()));
         return true;
+    }
+
+    public static boolean placeRandomAreaBlocks(Minecraft minecraft) {
+        if (minecraft.player == null || minecraft.level == null || minecraft.getConnection() == null) {
+            return false;
+        }
+
+        if (!isRandomAreaMode() || !randomAreaLocked || !AreaSelectionState.hasSelection()) {
+            setLastAction(Lang.tr("iterablock.tool.action.random_area_need_lock"));
+            return true;
+        }
+
+        BlockState state = getHeldBlockState(minecraft.player);
+        if (state == null) {
+            state = Blocks.AIR.defaultBlockState();
+        }
+
+        BlockPos min = AreaSelectionState.getMinCorner();
+        BlockPos max = AreaSelectionState.getMaxCorner();
+        PlacementBatcher batcher = new PlacementBatcher(PlacementReplaceMode.REPLACE_ALL);
+        long seed = RANDOM.nextLong();
+
+        for (int y = min.getY(); y <= max.getY(); y++) {
+            for (int z = min.getZ(); z <= max.getZ(); z++) {
+                for (int x = min.getX(); x <= max.getX(); x++) {
+                    BlockPos pos = new BlockPos(x, y, z);
+                    if (matchesRandomAreaNoise(pos, seed)) {
+                        batcher.accept(new PlacedBlock(pos, state));
+                    }
+                }
+            }
+        }
+
+        batcher.flush();
+        setLastAction(Lang.tr("iterablock.tool.action.random_area_placed", batcher.totalSent()));
+        return true;
+    }
+
+    private static boolean matchesRandomAreaNoise(BlockPos pos, long seed) {
+        long value = pos.asLong() ^ seed ^ 0x9E3779B97F4A7C15L;
+        value = (value ^ (value >>> 30)) * 0xBF58476D1CE4E5B9L;
+        value = (value ^ (value >>> 27)) * 0x94D049BB133111EBL;
+        value ^= value >>> 31;
+        double normalized = (value >>> 11) * 0x1.0p-53;
+        return normalized < RANDOM_AREA_REPLACE_CHANCE;
     }
 
     public static boolean placeBezierCurve(Minecraft minecraft) {
@@ -518,6 +692,17 @@ public final class ToolState {
         setLastAction(withCurrentLitematic(Lang.tr("iterablock.tool.action.placement_projected")));
     }
 
+    private static void handleRingPlacementSecondary(Minecraft minecraft) {
+        if (ClientToolState.currentLitematic == null) {
+            setLastAction(Lang.tr("iterablock.tool.action.no_litematic"));
+            return;
+        }
+
+        BlockPos center = getPlacementOrigin(minecraft);
+        SchematicPlacementState.place(ClientToolState.currentLitematic, center);
+        setLastAction(withCurrentLitematic("\u5706\u73af\u5706\u5fc3\u5df2\u8bbe\u7f6e\uff1a" + center.getX() + ", " + center.getY() + ", " + center.getZ()));
+    }
+
     private static void handleAreaSelectionPrimary(Minecraft minecraft) {
         if (minecraft.player == null) {
             return;
@@ -604,6 +789,16 @@ public final class ToolState {
     }
 
     private static void collectBlocks(BlockPos origin, LitematicaSchematicInfo info, Consumer<PlacedBlock> collector) {
+        if (mode == ToolMode.RING_PLACEMENT) {
+            List<BlockPos> offsets = RingPlacementState.getOffsets();
+
+            for (int i = 0; i < offsets.size(); i++) {
+                collectBlocksForOrigin(origin.offset(offsets.get(i)), info, collector, RingPlacementState.getRotationSteps(i), SchematicPlacementState.getMirrorAxis());
+            }
+
+            return;
+        }
+
         BlockPos arrayStep = SchematicPlacementState.getLinearArrayStep(info);
         List<BlockPos> offsets = getPlacementOffsets(arrayStep);
 
@@ -655,7 +850,8 @@ public final class ToolState {
     }
 
     private static List<BlockPos> getPlacementOffsets(BlockPos arrayStep) {
-        if (mode == ToolMode.LINEAR_ARRAY) {
+        if (mode == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.LINEAR) {
             List<BlockPos> offsets = new java.util.ArrayList<>();
             int copies = SchematicPlacementState.getLinearArrayCopyCount();
 
@@ -666,7 +862,8 @@ public final class ToolState {
             return offsets;
         }
 
-        if (mode == ToolMode.VOLUME_ARRAY) {
+        if (mode == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.VOLUME) {
             return SchematicPlacementState.getVolumeArrayOffsets(arrayStep);
         }
 
@@ -696,7 +893,9 @@ public final class ToolState {
                     continue;
                 }
 
-                BlockPos pos = origin.offset(transformBlockOffset(region.position(), block.pos(), region.size(), rotationSteps, mirrorAxis));
+                BlockPos transformedOffset = transformBlockOffset(region.position(), block.pos(), region.size(), rotationSteps, mirrorAxis);
+                BlockPos offset = SchematicPlacementState.applyPlacementOffset(transformedOffset, rotationSteps);
+                BlockPos pos = origin.offset(offset);
                 collector.accept(new PlacedBlock(pos, state));
             }
         }
@@ -801,6 +1000,11 @@ public final class ToolState {
     }
 
     private record PlacedBlock(BlockPos pos, BlockState state) {
+    }
+
+    public enum RandomPlacementMode {
+        SCHEMATIC,
+        AREA_BLOCK
     }
 
     private static BlockPos transformBlockOffset(BlockPos regionPosition, BlockPos localPos, BlockPos regionSize, int rotationSteps) {

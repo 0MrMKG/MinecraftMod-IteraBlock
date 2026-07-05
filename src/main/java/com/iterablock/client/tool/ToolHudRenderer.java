@@ -35,7 +35,14 @@ public class ToolHudRenderer implements IRenderer {
 
         ToolMode mode = ToolState.getMode();
 
-        if (minecraft.options.hideGui || minecraft.screen != null || minecraft.player == null || (!ToolState.hasToolItem(minecraft.player) && mode != ToolMode.BEZIER_CURVE_GENERATION && mode != ToolMode.SYMMETRY_PLACEMENT)) {
+        boolean persistentRandomArea = ToolState.isRandomAreaMode() && ToolState.isRandomAreaLocked();
+        if (minecraft.options.hideGui
+                || minecraft.screen != null
+                || minecraft.player == null
+                || (!ToolState.hasToolItem(minecraft.player)
+                && mode != ToolMode.BEZIER_CURVE_GENERATION
+                && mode != ToolMode.SYMMETRY_PLACEMENT
+                && !persistentRandomArea)) {
             return;
         }
 
@@ -117,6 +124,9 @@ public class ToolHudRenderer implements IRenderer {
         BlockPos symmetryCenter = SymmetryPlacementState.getCenter();
         return new HudCacheKey(
                 mode,
+                SchematicPlacementState.getArrayMode(),
+                ToolState.getRandomPlacementMode(),
+                ToolState.isRandomAreaLocked(),
                 ClientToolState.currentLitematic,
                 ToolState.getLastActionCacheToken(),
                 lookAxis,
@@ -129,6 +139,8 @@ public class ToolHudRenderer implements IRenderer {
                 BuilderHelperClientConfig.getRandomPlacementHeightMax(),
                 BuilderHelperClientConfig.getRandomPlacementCount(),
                 BuilderHelperClientConfig.getRandomPlacementRotationChance(),
+                RingPlacementState.getCount(),
+                RingPlacementState.getRadius(),
                 AreaSelectionState.getFirstCorner(),
                 AreaSelectionState.getSecondCorner(),
                 AreaSelectionState.getActiveCorner(),
@@ -141,6 +153,10 @@ public class ToolHudRenderer implements IRenderer {
                 SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.X),
                 SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Y),
                 SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Z),
+                SchematicPlacementState.isPlacementPointAdjusting(),
+                SchematicPlacementState.getPlacementOffset().getX(),
+                SchematicPlacementState.getPlacementOffset().getY(),
+                SchematicPlacementState.getPlacementOffset().getZ(),
                 SymmetryPlacementState.hasCenter(),
                 symmetryCenter,
                 SymmetryPlacementState.getKind(),
@@ -168,10 +184,10 @@ public class ToolHudRenderer implements IRenderer {
             return 0x9AF5B0;
         }
 
-        if (mode == ToolMode.LINEAR_ARRAY
-                || mode == ToolMode.VOLUME_ARRAY
+        if (mode == ToolMode.ARRAY_PLACEMENT
                 || mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT
                 || mode == ToolMode.BEZIER_CURVE_GENERATION
+                || mode == ToolMode.RING_PLACEMENT
                 || mode == ToolMode.SYMMETRY_PLACEMENT) {
             return 0xFFE680;
         }
@@ -228,12 +244,35 @@ public class ToolHudRenderer implements IRenderer {
         }
 
         if (mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT) {
+            if (ToolState.getRandomPlacementMode() == ToolState.RandomPlacementMode.AREA_BLOCK) {
+                if (!AreaSelectionState.hasSelection()) {
+                    return Lang.tr("iterablock.tool.random.area.empty");
+                }
+
+                return Lang.tr("iterablock.tool.random.area.selection",
+                        AreaSelectionState.getSizeX(),
+                        AreaSelectionState.getSizeY(),
+                        AreaSelectionState.getSizeZ(),
+                        Lang.tr(ToolState.isRandomAreaLocked()
+                                ? "iterablock.tool.random.area.locked"
+                                : "iterablock.tool.random.area.editing"));
+            }
+
             return Lang.tr("iterablock.tool.random.params",
                     BuilderHelperClientConfig.getRandomPlacementRadius(),
                     BuilderHelperClientConfig.getRandomPlacementHeightMin(),
                     BuilderHelperClientConfig.getRandomPlacementHeightMax(),
                     BuilderHelperClientConfig.getRandomPlacementCount(),
                     BuilderHelperClientConfig.getRandomPlacementRotationChance());
+        }
+
+        if (mode == ToolMode.RING_PLACEMENT) {
+            if (!SchematicPlacementState.hasPlacement()) {
+                return "\u5706\u73af\uff1a\u53f3\u952e\u9009\u62e9\u5706\u5fc3\uff1b\u6570\u91cf " + RingPlacementState.getCount() + "\uff1b\u534a\u5f84 " + RingPlacementState.getRadius();
+            }
+
+            BlockPos center = SchematicPlacementState.getOrigin();
+            return "\u5706\u73af\uff1a\u4e2d\u5fc3 " + formatPos(center) + "\uff1b\u6570\u91cf " + RingPlacementState.getCount() + "\uff1b\u534a\u5f84 " + RingPlacementState.getRadius();
         }
 
         if (mode == ToolMode.SYMMETRY_PLACEMENT) {
@@ -254,19 +293,31 @@ public class ToolHudRenderer implements IRenderer {
                     Lang.tr(SymmetryPlacementState.isEnabled() ? "iterablock.tool.symmetry.enabled" : "iterablock.tool.symmetry.paused"));
         }
 
-        if (!SchematicPlacementState.hasPlacement()) {
-            return "";
+        if (mode == ToolMode.SCHEMATIC_PLACEMENT && SchematicPlacementState.hasPlacement()) {
+            BlockPos offset = SchematicPlacementState.getPlacementOffset();
+            String state = SchematicPlacementState.isPlacementPointAdjusting() ? "\u5fae\u8c03\u4e2d" : "\u6b63\u5e38";
+            return "\u653e\u7f6e\u70b9\uff1a" + state + "\uff1bX " + offset.getX() + " / Y " + offset.getY() + " / Z " + offset.getZ();
         }
 
-        SchematicPlacementState.Axis lookAxis = SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
+        if (mode == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.LINEAR) {
+            if (!SchematicPlacementState.hasPlacement()) {
+                return Lang.tr("iterablock.tool.array.mode.linear");
+            }
 
-        if (mode == ToolMode.LINEAR_ARRAY) {
+            SchematicPlacementState.Axis lookAxis = SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
             String axis = SchematicPlacementState.getLinearArrayAxisName();
             int count = SchematicPlacementState.getLinearArrayCount();
             return Lang.tr("iterablock.tool.array.linear", formatAxisName(axis, lookAxis), count);
         }
 
-        if (mode == ToolMode.VOLUME_ARRAY) {
+        if (mode == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.VOLUME) {
+            if (!SchematicPlacementState.hasPlacement()) {
+                return Lang.tr("iterablock.tool.array.mode.volume");
+            }
+
+            SchematicPlacementState.Axis lookAxis = SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
             return Lang.tr("iterablock.tool.array.volume",
                     formatArrayValue(SchematicPlacementState.Axis.X, lookAxis),
                     formatArrayValue(SchematicPlacementState.Axis.Y, lookAxis),
@@ -281,12 +332,14 @@ public class ToolHudRenderer implements IRenderer {
             return "";
         }
 
-        if (mode == ToolMode.LINEAR_ARRAY) {
+        if (mode == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.LINEAR) {
             SchematicPlacementState.Axis axis = SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
             return Lang.tr("iterablock.tool.overlap.single", axis.name(), SchematicPlacementState.getOverlap(axis));
         }
 
-        if (mode == ToolMode.VOLUME_ARRAY) {
+        if (mode == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.VOLUME) {
             SchematicPlacementState.Axis lookAxis = SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
             return Lang.tr("iterablock.tool.overlap.all",
                     formatAxisValue(SchematicPlacementState.Axis.X, lookAxis),
@@ -346,6 +399,9 @@ public class ToolHudRenderer implements IRenderer {
 
     private record HudCacheKey(
             ToolMode mode,
+            SchematicPlacementState.ArrayMode arrayMode,
+            ToolState.RandomPlacementMode randomPlacementMode,
+            boolean randomAreaLocked,
             LoadedLitematicManager.Entry litematic,
             String lastAction,
             SchematicPlacementState.Axis lookAxis,
@@ -358,6 +414,8 @@ public class ToolHudRenderer implements IRenderer {
             int randomHeightMax,
             int randomCount,
             int randomRotationChance,
+            int ringCount,
+            int ringRadius,
             BlockPos areaFirstCorner,
             BlockPos areaSecondCorner,
             AreaSelectionState.Corner areaActiveCorner,
@@ -370,6 +428,10 @@ public class ToolHudRenderer implements IRenderer {
             int overlapX,
             int overlapY,
             int overlapZ,
+            boolean placementPointAdjusting,
+            int placementOffsetX,
+            int placementOffsetY,
+            int placementOffsetZ,
             boolean symmetryHasCenter,
             BlockPos symmetryCenter,
             SymmetryPlacementState.Kind symmetryKind,

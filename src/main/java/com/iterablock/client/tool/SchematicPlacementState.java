@@ -35,13 +35,21 @@ public final class SchematicPlacementState {
     private static int overlapX;
     private static int overlapY;
     private static int overlapZ;
+    private static ArrayMode arrayMode = ArrayMode.LINEAR;
+    private static BlockPos placementOffset = BlockPos.ZERO;
+    private static boolean placementPointAdjusting;
 
     private SchematicPlacementState() {
     }
 
     public static void place(LoadedLitematicManager.Entry selectedEntry, BlockPos selectedOrigin) {
+        boolean changedEntry = entry != selectedEntry;
         entry = selectedEntry;
         origin = selectedOrigin;
+        if (changedEntry) {
+            placementOffset = BlockPos.ZERO;
+        }
+        placementPointAdjusting = false;
         resetArrayCounts();
     }
 
@@ -70,9 +78,49 @@ public final class SchematicPlacementState {
         return mirrorAxis;
     }
 
+    public static ArrayMode getArrayMode() {
+        return arrayMode;
+    }
+
+    public static void resetArrayMode() {
+        arrayMode = ArrayMode.LINEAR;
+        resetArrayCounts();
+    }
+
+    public static ArrayMode toggleArrayMode() {
+        arrayMode = arrayMode == ArrayMode.LINEAR ? ArrayMode.VOLUME : ArrayMode.LINEAR;
+        resetArrayCounts();
+        return arrayMode;
+    }
+
+    public static BlockPos getPlacementOffset() {
+        return placementOffset;
+    }
+
+    public static boolean isPlacementPointAdjusting() {
+        return placementPointAdjusting;
+    }
+
+    public static boolean togglePlacementPointAdjustment() {
+        if (!hasPlacement()) {
+            return false;
+        }
+
+        placementPointAdjusting = !placementPointAdjusting;
+        if (placementPointAdjusting) {
+            placementOffset = clampPlacementOffset(placementOffset);
+        }
+        return true;
+    }
+
+    public static void stopPlacementPointAdjustment() {
+        placementPointAdjusting = false;
+    }
+
     public static void rotateClockwise() {
         if (hasPlacement()) {
             rotationSteps = (rotationSteps + 1) & 3;
+            placementOffset = clampPlacementOffset(placementOffset);
         }
     }
 
@@ -87,6 +135,7 @@ public final class SchematicPlacementState {
             case Z -> MirrorAxis.Z;
         };
         mirrorAxis = mirrorAxis == axis ? MirrorAxis.NONE : axis;
+        placementOffset = clampPlacementOffset(placementOffset);
         return mirrorAxis;
     }
 
@@ -108,6 +157,41 @@ public final class SchematicPlacementState {
             case Z -> origin.offset(0, 0, signedAmount);
         };
         return axis;
+    }
+
+    public static Axis adjustPlacementOffset(Vec3 lookDirection, int amount) {
+        if (!hasPlacement() || amount == 0 || !placementPointAdjusting) {
+            return null;
+        }
+
+        Axis axis = getLookAxis(lookDirection);
+        int signedAmount = switch (axis) {
+            case X -> signFrom(lookDirection.x) * amount;
+            case Y -> signFrom(lookDirection.y) * amount;
+            case Z -> signFrom(lookDirection.z) * amount;
+        };
+
+        BlockPos oldOffset = placementOffset;
+        BlockPos nextOffset = switch (axis) {
+            case X -> placementOffset.offset(signedAmount, 0, 0);
+            case Y -> placementOffset.offset(0, signedAmount, 0);
+            case Z -> placementOffset.offset(0, 0, signedAmount);
+        };
+        placementOffset = clampPlacementOffset(nextOffset);
+
+        BlockPos appliedDelta = placementOffset.subtract(oldOffset);
+        origin = origin.offset(appliedDelta);
+        return axis;
+    }
+
+    public static BlockPos applyPlacementOffset(BlockPos transformedOffset) {
+        return transformedOffset.subtract(placementOffset);
+    }
+
+    public static BlockPos applyPlacementOffset(BlockPos transformedOffset, int targetRotationSteps) {
+        int additionalRotation = Math.floorMod(targetRotationSteps - rotationSteps, 4);
+        BlockPos rotatedPlacementOffset = rotateOffset(placementOffset, additionalRotation);
+        return transformedOffset.subtract(rotatedPlacementOffset);
     }
 
     public static void adjustLinearArray(Vec3 lookDirection, int amount) {
@@ -413,6 +497,9 @@ public final class SchematicPlacementState {
         origin = null;
         rotationSteps = 0;
         mirrorAxis = MirrorAxis.NONE;
+        arrayMode = ArrayMode.LINEAR;
+        placementOffset = BlockPos.ZERO;
+        placementPointAdjusting = false;
         resetArrayCounts();
     }
 
@@ -452,6 +539,76 @@ public final class SchematicPlacementState {
         return Math.max(0, Math.min(999, value));
     }
 
+    private static BlockPos clampPlacementOffset(BlockPos offset) {
+        PlacementBounds bounds = getPlacementBounds();
+
+        if (bounds == null) {
+            return BlockPos.ZERO;
+        }
+
+        return new BlockPos(
+                clamp(offset.getX(), bounds.minX(), bounds.maxX()),
+                clamp(offset.getY(), bounds.minY(), bounds.maxY()),
+                clamp(offset.getZ(), bounds.minZ(), bounds.maxZ())
+        );
+    }
+
+    private static PlacementBounds getPlacementBounds() {
+        if (entry == null) {
+            return null;
+        }
+
+        Integer minX = null;
+        int minY = 0;
+        int minZ = 0;
+        int maxX = 0;
+        int maxY = 0;
+        int maxZ = 0;
+
+        for (LitematicaSchematicInfo.Region region : entry.info().regions()) {
+            for (LitematicaSchematicInfo.BlockSample block : region.blocks()) {
+                BlockState state = transformState(block.state());
+
+                if (state.isAir()) {
+                    continue;
+                }
+
+                BlockPos pos = transformBlockOffset(region.position(), block.pos(), region.size());
+
+                if (minX == null) {
+                    minX = pos.getX();
+                    minY = pos.getY();
+                    minZ = pos.getZ();
+                    maxX = pos.getX();
+                    maxY = pos.getY();
+                    maxZ = pos.getZ();
+                } else {
+                    minX = Math.min(minX, pos.getX());
+                    minY = Math.min(minY, pos.getY());
+                    minZ = Math.min(minZ, pos.getZ());
+                    maxX = Math.max(maxX, pos.getX());
+                    maxY = Math.max(maxY, pos.getY());
+                    maxZ = Math.max(maxZ, pos.getZ());
+                }
+            }
+        }
+
+        return minX == null ? null : new PlacementBounds(minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static BlockPos rotateOffset(BlockPos offset, int rotation) {
+        return switch (rotation & 3) {
+            case 1 -> new BlockPos(-offset.getZ(), offset.getY(), offset.getX());
+            case 2 -> new BlockPos(-offset.getX(), offset.getY(), -offset.getZ());
+            case 3 -> new BlockPos(offset.getZ(), offset.getY(), -offset.getX());
+            default -> offset;
+        };
+    }
+
     private static BlockPos applyOverlap(BlockPos step) {
         return new BlockPos(
                 Math.max(1, step.getX() - overlapX),
@@ -464,10 +621,18 @@ public final class SchematicPlacementState {
         return value < 0.0 ? -1 : 1;
     }
 
+    private record PlacementBounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+    }
+
     public enum Axis {
         X,
         Y,
         Z
+    }
+
+    public enum ArrayMode {
+        LINEAR,
+        VOLUME
     }
 
     public enum MirrorAxis {

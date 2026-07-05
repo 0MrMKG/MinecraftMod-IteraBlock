@@ -47,6 +47,7 @@ public class SchematicProjectionRenderer {
     private LoadedLitematicManager.Entry cachedBoundsEntry;
     private int cachedBoundsRotation = -1;
     private SchematicPlacementState.MirrorAxis cachedBoundsMirror = SchematicPlacementState.MirrorAxis.NONE;
+    private BlockPos cachedBoundsPlacementOffset = BlockPos.ZERO;
     private Bounds cachedLocalBounds;
     private LoadedLitematicManager.Entry cachedStepEntry;
     private int cachedStepRotation = -1;
@@ -70,6 +71,7 @@ public class SchematicProjectionRenderer {
         this.cachedBoundsEntry = null;
         this.cachedBoundsRotation = -1;
         this.cachedBoundsMirror = SchematicPlacementState.MirrorAxis.NONE;
+        this.cachedBoundsPlacementOffset = BlockPos.ZERO;
         this.cachedLocalBounds = null;
         this.cachedStepEntry = null;
         this.cachedStepRotation = -1;
@@ -156,6 +158,7 @@ public class SchematicProjectionRenderer {
                 entry,
                 origin,
                 ToolState.getMode(),
+                SchematicPlacementState.getArrayMode(),
                 SchematicPlacementState.getRotationSteps(),
                 SchematicPlacementState.getMirrorAxis(),
                 SchematicPlacementState.getLinearArrayCount(),
@@ -165,6 +168,11 @@ public class SchematicProjectionRenderer {
                 SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.X),
                 SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Y),
                 SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Z),
+                SchematicPlacementState.getPlacementOffset().getX(),
+                SchematicPlacementState.getPlacementOffset().getY(),
+                SchematicPlacementState.getPlacementOffset().getZ(),
+                RingPlacementState.getCount(),
+                RingPlacementState.getRadius(),
                 BuilderHelperClientConfig.getLinearArrayRenderLimit(),
                 BuilderHelperClientConfig.getVolumeArrayRenderLimit()
         );
@@ -176,13 +184,17 @@ public class SchematicProjectionRenderer {
         List<RenderBlock> blocks = new java.util.ArrayList<>();
         List<Bounds> bounds = new java.util.ArrayList<>();
 
+        boolean ringPlacement = ToolState.getMode() == ToolMode.RING_PLACEMENT;
+
         for (int copy = 0; copy < realRenderLimit; copy++) {
             BlockPos copyOrigin = origin.offset(offsets.get(copy));
-            this.collectPlacementBlocks(minecraft, copyOrigin, entry.info(), blocks);
+            int rotationSteps = ringPlacement ? RingPlacementState.getRotationSteps(copy) : SchematicPlacementState.getRotationSteps();
+            this.collectPlacementBlocks(minecraft, copyOrigin, entry.info(), blocks, rotationSteps, SchematicPlacementState.getMirrorAxis(), !ringPlacement);
         }
 
-        for (BlockPos offset : offsets) {
-            Bounds copyBounds = this.getPlacementBounds(origin.offset(offset), entry);
+        for (int copy = 0; copy < offsets.size(); copy++) {
+            int rotationSteps = ringPlacement ? RingPlacementState.getRotationSteps(copy) : SchematicPlacementState.getRotationSteps();
+            Bounds copyBounds = this.getPlacementBounds(origin.offset(offsets.get(copy)), entry, rotationSteps);
 
             if (copyBounds != null) {
                 bounds.add(copyBounds);
@@ -196,7 +208,8 @@ public class SchematicProjectionRenderer {
     }
 
     private List<BlockPos> getPlacementOffsets(BlockPos arrayStep) {
-        if (ToolState.getMode() == ToolMode.LINEAR_ARRAY) {
+        if (ToolState.getMode() == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.LINEAR) {
             List<BlockPos> offsets = new java.util.ArrayList<>();
             int copies = SchematicPlacementState.getLinearArrayCopyCount();
 
@@ -207,8 +220,13 @@ public class SchematicProjectionRenderer {
             return offsets;
         }
 
-        if (ToolState.getMode() == ToolMode.VOLUME_ARRAY) {
+        if (ToolState.getMode() == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.VOLUME) {
             return SchematicPlacementState.getVolumeArrayOffsets(arrayStep);
+        }
+
+        if (ToolState.getMode() == ToolMode.RING_PLACEMENT) {
+            return RingPlacementState.getOffsets();
         }
 
         return java.util.List.of(BlockPos.ZERO);
@@ -242,11 +260,17 @@ public class SchematicProjectionRenderer {
     }
 
     private int getRealRenderLimit(int copies) {
-        if (ToolState.getMode() == ToolMode.LINEAR_ARRAY) {
+        if (ToolState.getMode() == ToolMode.RING_PLACEMENT) {
+            return copies;
+        }
+
+        if (ToolState.getMode() == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.LINEAR) {
             return Math.min(copies, BuilderHelperClientConfig.getLinearArrayRenderLimit());
         }
 
-        if (ToolState.getMode() == ToolMode.VOLUME_ARRAY) {
+        if (ToolState.getMode() == ToolMode.ARRAY_PLACEMENT
+                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.VOLUME) {
             int axisLimit = BuilderHelperClientConfig.getVolumeArrayRenderLimit();
             return Math.min(copies, axisLimit * axisLimit * axisLimit);
         }
@@ -255,14 +279,20 @@ public class SchematicProjectionRenderer {
     }
 
     private void collectPlacementBlocks(Minecraft minecraft, BlockPos origin, LitematicaSchematicInfo info, List<RenderBlock> renderBlocks) {
+        this.collectPlacementBlocks(minecraft, origin, info, renderBlocks, SchematicPlacementState.getRotationSteps(), SchematicPlacementState.getMirrorAxis(), true);
+    }
+
+    private void collectPlacementBlocks(Minecraft minecraft, BlockPos origin, LitematicaSchematicInfo info, List<RenderBlock> renderBlocks, int rotationSteps, SchematicPlacementState.MirrorAxis mirrorAxis, boolean skipOccupiedBlocks) {
         for (LitematicaSchematicInfo.Region region : info.regions()) {
             List<LitematicaSchematicInfo.BlockSample> samples = region.blocks();
 
             for (LitematicaSchematicInfo.BlockSample block : samples) {
-                BlockPos pos = origin.offset(SchematicPlacementState.transformBlockOffset(region.position(), block.pos(), region.size()));
-                BlockState state = SchematicPlacementState.transformState(block.state());
+                BlockPos transformedOffset = SchematicPlacementState.transformBlockOffset(region.position(), block.pos(), region.size(), rotationSteps, mirrorAxis);
+                BlockPos offset = SchematicPlacementState.applyPlacementOffset(transformedOffset, rotationSteps);
+                BlockPos pos = origin.offset(offset);
+                BlockState state = SchematicPlacementState.transformState(block.state(), rotationSteps, mirrorAxis);
 
-                if (!minecraft.level.getBlockState(pos).isAir()) {
+                if (skipOccupiedBlocks && !minecraft.level.getBlockState(pos).isAir()) {
                     continue;
                 }
 
@@ -299,7 +329,15 @@ public class SchematicProjectionRenderer {
     }
 
     private Bounds getPlacementBounds(BlockPos origin, LoadedLitematicManager.Entry entry) {
+        return this.getPlacementBounds(origin, entry, SchematicPlacementState.getRotationSteps());
+    }
+
+    private Bounds getPlacementBounds(BlockPos origin, LoadedLitematicManager.Entry entry, int rotationSteps) {
         Bounds localBounds = this.getLocalPlacementBounds(entry);
+
+        if (rotationSteps != SchematicPlacementState.getRotationSteps()) {
+            localBounds = this.findLocalPlacementBounds(entry.info(), rotationSteps, SchematicPlacementState.getMirrorAxis());
+        }
 
         if (localBounds == null) {
             return null;
@@ -311,21 +349,28 @@ public class SchematicProjectionRenderer {
     private Bounds getLocalPlacementBounds(LoadedLitematicManager.Entry entry) {
         int rotation = SchematicPlacementState.getRotationSteps();
         SchematicPlacementState.MirrorAxis mirror = SchematicPlacementState.getMirrorAxis();
+        BlockPos placementOffset = SchematicPlacementState.getPlacementOffset();
 
         if (this.cachedBoundsEntry == entry
                 && this.cachedBoundsRotation == rotation
-                && this.cachedBoundsMirror == mirror) {
+                && this.cachedBoundsMirror == mirror
+                && this.cachedBoundsPlacementOffset.equals(placementOffset)) {
             return this.cachedLocalBounds;
         }
 
         this.cachedBoundsEntry = entry;
         this.cachedBoundsRotation = rotation;
         this.cachedBoundsMirror = mirror;
-        this.cachedLocalBounds = this.findLocalPlacementBounds(entry.info());
+        this.cachedBoundsPlacementOffset = placementOffset;
+        this.cachedLocalBounds = this.findLocalPlacementBounds(entry.info(), rotation, mirror);
         return this.cachedLocalBounds;
     }
 
     private Bounds findLocalPlacementBounds(LitematicaSchematicInfo info) {
+        return this.findLocalPlacementBounds(info, SchematicPlacementState.getRotationSteps(), SchematicPlacementState.getMirrorAxis());
+    }
+
+    private Bounds findLocalPlacementBounds(LitematicaSchematicInfo info, int rotationSteps, SchematicPlacementState.MirrorAxis mirrorAxis) {
         Integer minX = null;
         int minY = 0;
         int minZ = 0;
@@ -335,13 +380,14 @@ public class SchematicProjectionRenderer {
 
         for (LitematicaSchematicInfo.Region region : info.regions()) {
             for (LitematicaSchematicInfo.BlockSample block : region.blocks()) {
-                BlockState state = SchematicPlacementState.transformState(block.state());
+                BlockState state = SchematicPlacementState.transformState(block.state(), rotationSteps, mirrorAxis);
 
                 if (state.isAir()) {
                     continue;
                 }
 
-                BlockPos pos = SchematicPlacementState.transformBlockOffset(region.position(), block.pos(), region.size());
+                BlockPos offset = SchematicPlacementState.transformBlockOffset(region.position(), block.pos(), region.size(), rotationSteps, mirrorAxis);
+                BlockPos pos = SchematicPlacementState.applyPlacementOffset(offset, rotationSteps);
 
                 if (minX == null) {
                     minX = pos.getX();
@@ -380,7 +426,7 @@ public class SchematicProjectionRenderer {
     }
 
     private void renderAreaSelection(PoseStack poseStack) {
-        if (ToolState.getMode() != ToolMode.AREA_COPY_PASTE) {
+        if (ToolState.getMode() != ToolMode.AREA_COPY_PASTE && !ToolState.isRandomAreaMode()) {
             return;
         }
 
@@ -593,6 +639,7 @@ public class SchematicProjectionRenderer {
             LoadedLitematicManager.Entry entry,
             BlockPos origin,
             ToolMode mode,
+            SchematicPlacementState.ArrayMode arrayMode,
             int rotation,
             SchematicPlacementState.MirrorAxis mirror,
             int linearCount,
@@ -602,6 +649,11 @@ public class SchematicProjectionRenderer {
             int overlapX,
             int overlapY,
             int overlapZ,
+            int placementOffsetX,
+            int placementOffsetY,
+            int placementOffsetZ,
+            int ringCount,
+            int ringRadius,
             int linearRenderLimit,
             int volumeRenderLimit) {
     }
