@@ -9,6 +9,10 @@ public final class ClientToolState {
     }
 
     public static void setCurrentLitematic(LoadedLitematicManager.Entry entry) {
+        if (currentLitematic != entry) {
+            SchematicProjectionRenderer.getInstance().clearCache();
+        }
+
         currentLitematic = entry;
     }
 }

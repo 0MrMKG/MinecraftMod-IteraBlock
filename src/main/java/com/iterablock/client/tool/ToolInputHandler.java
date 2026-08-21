@@ -92,14 +92,6 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return ToolState.toggleSymmetryParity();
         }
 
-        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C && ToolState.getMode() == ToolMode.RING_PLACEMENT) {
-            return ToolState.adjustRingCount(-1);
-        }
-
-        if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_V && ToolState.getMode() == ToolMode.RING_PLACEMENT) {
-            return ToolState.adjustRingCount(1);
-        }
-
         if (Screen.hasControlDown() && keyCode == GLFW.GLFW_KEY_C && ToolState.getMode() == ToolMode.ARRAY_PLACEMENT) {
             return ToolState.toggleArrayMode();
         }
@@ -233,10 +225,6 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
 
             ToolState.adjustVolumeArray(minecraft, amount > 0.0 ? 1 : -1);
             return true;
-        }
-
-        if (ToolState.getMode() == ToolMode.RING_PLACEMENT) {
-            return ToolState.adjustRingRadius(minecraft, amount > 0.0 ? 1 : -1);
         }
 
         if (ToolState.getMode() == ToolMode.SYMMETRY_PLACEMENT) {

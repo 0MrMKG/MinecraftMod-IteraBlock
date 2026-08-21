@@ -10,18 +10,25 @@ import com.iterablock.client.gui.settings.GuiBuilderHelperSettings;
 import com.iterablock.client.hotkeys.VanillaKeyMappings;
 import com.iterablock.client.tool.SchematicPlacementState;
 import com.iterablock.common.PlacementReplaceMode;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.BufferUploader;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.Tesselator;
+import com.mojang.blaze3d.vertex.VertexFormat;
 
 import fi.dy.masa.malilib.gui.GuiBase;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.GameRenderer;
 import org.lwjgl.glfw.GLFW;
 
 public class GuiBuilderHelperMainMenu extends GuiBase {
     private static final int BASE_BUTTON_WIDTH = 252;
     private static final int BASE_BUTTON_HEIGHT = 38;
-    private static final int BASE_COLUMN_GAP = 46;
-    private static final int BASE_ROW_GAP = 10;
-    private static final int BASE_GROUP_GAP = 28;
+    private static final int BASE_COLUMN_GAP = 28;
+    private static final int BASE_ROW_GAP = 8;
+    private static final int BASE_GROUP_GAP = 16;
     private static final int BASE_SAFE_MARGIN = 34;
     private static final int BASE_AXIS_CARD_WIDTH = 70;
     private static final int BASE_AXIS_CARD_HEIGHT = 20;
@@ -37,9 +44,13 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
     private static final int SIMPLE_BUTTON_FILL_HOVER = 0xAA5E6666;
     private static final int SIMPLE_BUTTON_BORDER = 0xBFFFFFFF;
     private static final int SIMPLE_BUTTON_BORDER_HOVER = 0xE8FFFFFF;
+    private static final int PANEL_FILL = 0x1A1A2225;
+    private static final int PANEL_BORDER = 0xD9DCE6E4;
+    private static final double PANEL_RADIUS = 9.0;
+    private static final double BUTTON_RADIUS = 5.5;
+    private static final int CORNER_SEGMENTS = 10;
 
     private final double[] hoverProgress = new double[MenuButton.values().length];
-    private final double[] axisHoverProgress = new double[SchematicPlacementState.Axis.values().length];
     private final double[] minusHoverProgress = new double[SchematicPlacementState.Axis.values().length];
     private final double[] plusHoverProgress = new double[SchematicPlacementState.Axis.values().length];
     private final double[] minusPressProgress = new double[SchematicPlacementState.Axis.values().length];
@@ -48,6 +59,8 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
     private double resetHoverProgress;
     private double resetPressProgress;
     private double resetFlashProgress;
+    private double backHoverProgress;
+    private double backPressProgress;
     private long lastFrameNanos;
     private MenuButton selectedButton;
 
@@ -62,7 +75,7 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
 
     @Override
     protected void drawScreenBackground(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        guiGraphics.fill(0, 0, this.width, this.height, 0x72000000);
+        guiGraphics.fill(0, 0, this.width, this.height, 0x08808080);
     }
 
     @Override
@@ -75,6 +88,7 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         List<ButtonPlacement> placements = this.getButtonPlacements(layout);
 
         this.updateHoverAnimations(mouseX, mouseY, placements);
+        this.drawMainPanel(guiGraphics, layout);
         this.drawScaledString(guiGraphics, this.getMenuTitle(), layout.startX(), layout.titleY(), layout.titleScale(), TITLE_COLOR, true);
 
         for (ButtonPlacement placement : placements) {
@@ -82,6 +96,7 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         }
 
         this.drawOverlapControls(guiGraphics, mouseX, mouseY, layout);
+        this.drawBackButton(guiGraphics, layout);
     }
 
     @Override
@@ -133,6 +148,13 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
             return true;
         }
 
+        ButtonWidget backButton = this.getBackButton(layout);
+        if (this.isInside(mouseX, mouseY, backButton.x(), backButton.y(), backButton.width(), backButton.height())) {
+            this.backPressProgress = 1.0;
+            this.closeGui(true);
+            return true;
+        }
+
         return super.onMouseClicked(mouseX, mouseY, mouseButton);
     }
 
@@ -178,11 +200,9 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
 
         for (AxisStepperWidget stepper : this.getAxisSteppers(this.createLayout())) {
             int index = stepper.axis().ordinal();
-            double cardTarget = this.isInside(mouseX, mouseY, stepper.x(), stepper.y(), stepper.width(), stepper.height()) ? 1.0 : 0.0;
             double minusTarget = this.isInside(mouseX, mouseY, stepper.minusX(), stepper.buttonY(), stepper.buttonSize(), stepper.buttonSize()) ? 1.0 : 0.0;
             double plusTarget = this.isInside(mouseX, mouseY, stepper.plusX(), stepper.buttonY(), stepper.buttonSize(), stepper.buttonSize()) ? 1.0 : 0.0;
 
-            this.axisHoverProgress[index] = this.approach(this.axisHoverProgress[index], cardTarget, HOVER_SPEED, deltaTime);
             this.minusHoverProgress[index] = this.approach(this.minusHoverProgress[index], minusTarget, HOVER_SPEED, deltaTime);
             this.plusHoverProgress[index] = this.approach(this.plusHoverProgress[index], plusTarget, HOVER_SPEED, deltaTime);
             this.minusPressProgress[index] = this.approach(this.minusPressProgress[index], 0.0, FEEDBACK_SPEED, deltaTime);
@@ -195,6 +215,16 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         this.resetHoverProgress = this.approach(this.resetHoverProgress, resetTarget, HOVER_SPEED, deltaTime);
         this.resetPressProgress = this.approach(this.resetPressProgress, 0.0, FEEDBACK_SPEED, deltaTime);
         this.resetFlashProgress = this.approach(this.resetFlashProgress, 0.0, FEEDBACK_SPEED, deltaTime);
+
+        ButtonWidget backButton = this.getBackButton(this.createLayout());
+        double backTarget = this.isInside(mouseX, mouseY, backButton.x(), backButton.y(), backButton.width(), backButton.height()) ? 1.0 : 0.0;
+        this.backHoverProgress = this.approach(this.backHoverProgress, backTarget, HOVER_SPEED, deltaTime);
+        this.backPressProgress = this.approach(this.backPressProgress, 0.0, FEEDBACK_SPEED, deltaTime);
+    }
+
+    private void drawMainPanel(GuiGraphics guiGraphics, Layout layout) {
+        this.drawRoundedBox(guiGraphics, layout.panelX(), layout.panelY(), layout.panelWidth(), layout.panelHeight(),
+                PANEL_RADIUS * layout.uiScale(), PANEL_FILL, PANEL_BORDER, Math.max(0.8, 1.15 * layout.uiScale()));
     }
 
     private void drawMenuButton(GuiGraphics guiGraphics, int mouseX, int mouseY, ButtonPlacement placement, Layout layout) {
@@ -261,28 +291,25 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
             this.drawAxisStepper(guiGraphics, stepper, layout);
         }
 
-        this.drawOffsetPreview(guiGraphics, layout);
         this.drawResetButton(guiGraphics, layout);
     }
 
     private void drawAxisStepper(GuiGraphics guiGraphics, AxisStepperWidget stepper, Layout layout) {
         int index = stepper.axis().ordinal();
-        double hover = this.easeOutCubic(this.axisHoverProgress[index]);
-        int labelColor = this.getAxisColor(stepper.axis(), hover);
 
-        this.drawStepperButton(guiGraphics, stepper.minusX(), stepper.buttonY(), stepper.buttonSize(), "-", this.minusHoverProgress[index], this.minusPressProgress[index], layout);
-        this.drawStepperButton(guiGraphics, stepper.plusX(), stepper.buttonY(), stepper.buttonSize(), "+", this.plusHoverProgress[index], this.plusPressProgress[index], layout);
+        this.drawStepperButton(guiGraphics, stepper.minusX(), stepper.buttonY(), stepper.buttonSize(), "-", this.minusHoverProgress[index], this.minusPressProgress[index]);
+        this.drawStepperButton(guiGraphics, stepper.plusX(), stepper.buttonY(), stepper.buttonSize(), "+", this.plusHoverProgress[index], this.plusPressProgress[index]);
 
-        this.drawValueBox(guiGraphics, stepper.valueX(), stepper.valueY(), stepper.valueWidth(), stepper.valueHeight(), Math.max(hover * 0.45, this.valueFlashProgress[index] * 0.75));
+        this.drawValueBox(guiGraphics, stepper.valueX(), stepper.valueY(), stepper.valueWidth(), stepper.valueHeight(), this.valueFlashProgress[index] * 0.75);
 
         String axisText = stepper.axis().name();
-        this.drawCenteredScaledString(guiGraphics, axisText, stepper.labelX(), stepper.y(), stepper.labelWidth(), stepper.height(), layout.textScale(), labelColor, true);
+        this.drawCenteredScaledString(guiGraphics, axisText, stepper.labelX(), stepper.y(), stepper.labelWidth(), stepper.height(), layout.textScale(), TEXT_COLOR, true);
 
         String value = Integer.toString(SchematicPlacementState.getOverlap(stepper.axis()));
-        this.drawCenteredScaledString(guiGraphics, value, stepper.valueX(), stepper.valueY(), stepper.valueWidth(), stepper.valueHeight(), layout.textScale(), ACTIVE_TEXT_COLOR, true);
+        this.drawCenteredScaledString(guiGraphics, value, stepper.valueX(), stepper.valueY(), stepper.valueWidth(), stepper.valueHeight(), layout.textScale(), TEXT_COLOR, true);
     }
 
-    private void drawStepperButton(GuiGraphics guiGraphics, int x, int y, int size, String label, double hoverProgress, double pressProgress, Layout layout) {
+    private void drawStepperButton(GuiGraphics guiGraphics, int x, int y, int size, String label, double hoverProgress, double pressProgress) {
         double hover = this.easeOutCubic(hoverProgress);
         int inset = pressProgress > 0.02 ? 1 : 0;
         int drawX = x + inset;
@@ -290,14 +317,13 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         int drawSize = size - inset * 2;
 
         this.drawSimpleButtonBox(guiGraphics, drawX, drawY, drawSize, drawSize, hover);
-        this.drawCenteredScaledString(guiGraphics, label, drawX, drawY, drawSize, drawSize, Math.max(0.66, layout.textScale()), hover > 0.02 ? ACTIVE_TEXT_COLOR : TEXT_COLOR, false);
+        this.drawStepperSymbol(guiGraphics, label, drawX, drawY, drawSize, hover > 0.02 ? ACTIVE_TEXT_COLOR : TEXT_COLOR);
     }
 
-    private void drawOffsetPreview(GuiGraphics guiGraphics, Layout layout) {
-        String text = "\u5f53\u524d\u504f\u79fb: X " + SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.X)
-                + " / Y " + SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Y)
-                + " / Z " + SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Z);
-        this.drawScaledString(guiGraphics, text, layout.previewX(), layout.previewY(), Math.max(0.58, layout.textScale() * 0.82), 0xFF9FB3AE, false);
+    private void drawStepperSymbol(GuiGraphics guiGraphics, String symbol, int x, int y, int size, int color) {
+        int symbolX = x + (size - this.getStringWidth(symbol)) / 2 + 1;
+        int symbolY = y + (size - 8) / 2 + ("-".equals(symbol) ? 2 : 0);
+        guiGraphics.drawString(this.textRenderer, symbol, symbolX, symbolY, color, false);
     }
 
     private void drawResetButton(GuiGraphics guiGraphics, Layout layout) {
@@ -320,26 +346,32 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
                 false);
     }
 
+    private void drawBackButton(GuiGraphics guiGraphics, Layout layout) {
+        ButtonWidget button = this.getBackButton(layout);
+        double hover = this.easeOutCubic(this.backHoverProgress);
+        int inset = this.backPressProgress > 0.02 ? 1 : 0;
+        int x = button.x() + inset;
+        int y = button.y() + inset;
+        int width = button.width() - inset * 2;
+        int height = button.height() - inset * 2;
+
+        this.drawSimpleButtonBox(guiGraphics, x, y, width, height, hover);
+        this.drawCenteredScaledString(guiGraphics, Lang.tr("iterablock.gui.button.back"), x, y, width, height,
+                Math.max(0.58, layout.textScale() * 0.86), hover > 0.02 ? ACTIVE_TEXT_COLOR : TEXT_COLOR, false);
+    }
+
     private void drawSimpleButtonBox(GuiGraphics guiGraphics, int x, int y, int width, int height, double hover) {
         int fill = this.blendColor(SIMPLE_BUTTON_FILL, SIMPLE_BUTTON_FILL_HOVER, hover);
         int border = this.blendColor(SIMPLE_BUTTON_BORDER, SIMPLE_BUTTON_BORDER_HOVER, hover);
 
-        guiGraphics.fill(x, y, x + width, y + height, fill);
-        guiGraphics.fill(x, y, x + width, y + 1, border);
-        guiGraphics.fill(x, y + height - 1, x + width, y + height, border);
-        guiGraphics.fill(x, y, x + 1, y + height, border);
-        guiGraphics.fill(x + width - 1, y, x + width, y + height, border);
+        this.drawRoundedBox(guiGraphics, x, y, width, height, Math.min(BUTTON_RADIUS, height * 0.28), fill, border, 1.0);
     }
 
     private void drawValueBox(GuiGraphics guiGraphics, int x, int y, int width, int height, double hover) {
         int fill = this.blendColor(0xAA9EA5A5, 0xC8C2CACA, hover);
         int border = this.blendColor(0x99FFFFFF, 0xE8FFFFFF, hover);
 
-        guiGraphics.fill(x, y, x + width, y + height, fill);
-        guiGraphics.fill(x, y, x + width, y + 1, border);
-        guiGraphics.fill(x, y + height - 1, x + width, y + height, border);
-        guiGraphics.fill(x, y, x + 1, y + height, border);
-        guiGraphics.fill(x + width - 1, y, x + width, y + height, border);
+        this.drawRoundedBox(guiGraphics, x, y, width, height, Math.min(BUTTON_RADIUS, height * 0.28), fill, border, 1.0);
     }
 
     private void drawCenteredScaledString(GuiGraphics guiGraphics, String text, int x, int y, int width, int height, double scale, int color, boolean shadow) {
@@ -353,7 +385,10 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
             case LOADED_FILES -> GuiBase.openGui(new GuiLoadedLitematicList(true));
             case LOAD_FILE -> GuiBase.openGui(new GuiIteraBlockMainMenu(true));
             case CONFIG -> GuiBase.openGui(new GuiBuilderHelperSettings(true));
-            case PLACEMENT_REPLACE_MODE -> BuilderHelperClientConfig.setPlacementReplaceMode(BuilderHelperClientConfig.getPlacementReplaceMode().next());
+            case PLACEMENT_REPLACE_MODE -> {
+                BuilderHelperClientConfig.setPlacementReplaceMode(BuilderHelperClientConfig.getPlacementReplaceMode().next());
+                this.selectedButton = null;
+            }
             case RANDOM_PLACEMENT_CONFIG -> GuiBase.openGui(new GuiRandomPlacementConfig(true));
             case BEZIER_CURVE_CONFIG -> GuiBase.openGui(new GuiBezierCurveConfig(true));
             default -> {
@@ -368,16 +403,6 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
 
         SchematicPlacementState.adjustOverlap(axis, amount);
         this.valueFlashProgress[axis.ordinal()] = 1.0;
-    }
-
-    private int getAxisColor(SchematicPlacementState.Axis axis, double hover) {
-        int base = switch (axis) {
-            case X -> 0xA8D8CE;
-            case Y -> 0xB8D6A8;
-            case Z -> 0xA8C8D8;
-        };
-
-        return this.withAlpha(this.blendRgb(base, 0xFFF3B0, hover), 0.96);
     }
 
     private String getButtonLabel(MenuButton button) {
@@ -414,22 +439,34 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         int contentWidth = buttonWidth * 2 + columnGap;
         int axisCardWidth = Math.max(66, (int) Math.round(BASE_AXIS_CARD_WIDTH * uiScale));
         int startX = Math.max(margin, (this.width - contentWidth) / 2);
-        int topY = Math.max(margin + 22, (int) Math.round(this.height * 0.16));
-        int totalHeight = buttonHeight * 4 + rowGap * 3 + groupGap + axisCardHeight + 14;
-        int maxTopY = Math.max(margin + 18, this.height - margin - totalHeight);
-
-        if (topY > maxTopY) {
-            topY = maxTopY;
-        }
+        int panelPadding = Math.max(9, (int) Math.round(14.0 * uiScale));
+        int titleSpace = Math.max(19, (int) Math.round(27.0 * uiScale));
+        int backGap = Math.max(8, (int) Math.round(12.0 * uiScale));
+        int backHeight = Math.max(16, (int) Math.round(20.0 * uiScale));
+        int backWidth = Math.max(52, (int) Math.round(72.0 * uiScale));
+        int previewHeight = Math.max(7, (int) Math.round(9.0 * uiScale));
+        int panelHeight = titleSpace + buttonHeight * 4 + rowGap * 3 + groupGap + axisCardHeight + 5
+                + previewHeight + panelPadding * 2;
+        int totalHeight = panelHeight + backGap + backHeight;
+        // Keep the main panel and the external back button balanced vertically.
+        int panelY = Math.max(8, (this.height - totalHeight) / 2);
+        int topY = panelY + panelPadding + titleSpace;
 
         int rowStep = buttonHeight + rowGap;
-        int axisY = topY + rowStep * 4 + groupGap;
+        int axisY = topY + buttonHeight * 4 + rowGap * 3 + groupGap;
         int axisStartX = startX;
         int previewY = axisY + axisCardHeight + 5;
         int resetY = axisY + Math.max(0, (axisCardHeight - resetHeight) / 2);
-        int resetX = startX + contentWidth - resetWidth;
+        int resetX = axisStartX + (axisCardWidth + axisGap) * 3 + axisGap;
+        int panelX = startX - panelPadding;
+        int panelWidth = contentWidth + panelPadding * 2;
+        int backY = panelY + panelHeight + backGap;
+        int backX = panelX + panelWidth - panelPadding - backWidth;
 
-        return new Layout(uiScale, startX, topY, buttonWidth, buttonHeight, axisStartX, axisY, axisCardWidth, axisCardHeight, axisGap, previewY, resetX, resetY, resetWidth, resetHeight, columnGap, rowGap, groupGap, Math.max(0.62, 0.82 * uiScale), Math.max(0.78, 1.08 * uiScale));
+        return new Layout(uiScale, startX, topY, buttonWidth, buttonHeight, axisStartX, axisY, axisCardWidth,
+                axisCardHeight, axisGap, previewY, resetX, resetY, resetWidth, resetHeight, backX, backY,
+                backWidth, backHeight, panelX, panelY, panelWidth, panelHeight, columnGap, rowGap, groupGap,
+                Math.max(0.62, 0.82 * uiScale), Math.max(0.78, 1.08 * uiScale));
     }
 
     private List<ButtonPlacement> getButtonPlacements(Layout layout) {
@@ -467,11 +504,88 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         return new ButtonWidget(layout.resetX(), layout.resetY(), layout.resetWidth(), layout.resetHeight());
     }
 
+    private ButtonWidget getBackButton(Layout layout) {
+        return new ButtonWidget(layout.backX(), layout.backY(), layout.backWidth(), layout.backHeight());
+    }
+
     private void drawScaledString(GuiGraphics guiGraphics, String text, int x, int y, double scale, int color, boolean shadow) {
         guiGraphics.pose().pushPose();
         guiGraphics.pose().scale((float) scale, (float) scale, 1.0F);
         guiGraphics.drawString(this.textRenderer, text, (int) Math.round(x / scale), (int) Math.round(y / scale), color, shadow);
         guiGraphics.pose().popPose();
+    }
+
+    private void drawRoundedBox(GuiGraphics guiGraphics, double x, double y, double width, double height,
+                                double radius, int fillColor, int borderColor, double borderWidth) {
+        if (width <= 0.0 || height <= 0.0) {
+            return;
+        }
+
+        double safeRadius = Math.max(0.0, Math.min(radius, Math.min(width, height) * 0.5));
+        this.drawRoundedRect(guiGraphics, x, y, width, height, safeRadius, borderColor);
+
+        double inset = Math.max(0.0, borderWidth);
+        if (width > inset * 2.0 && height > inset * 2.0) {
+            this.drawRoundedRect(guiGraphics, x + inset, y + inset, width - inset * 2.0, height - inset * 2.0,
+                    Math.max(0.0, safeRadius - inset), fillColor);
+        }
+    }
+
+    private void drawRoundedRect(GuiGraphics guiGraphics, double x, double y, double width, double height,
+                                 double radius, int color) {
+        if (((color >>> 24) & 0xFF) == 0 || width <= 0.0 || height <= 0.0) {
+            return;
+        }
+
+        double safeRadius = Math.max(0.0, Math.min(radius, Math.min(width, height) * 0.5));
+        List<double[]> perimeter = new ArrayList<>(4 * (CORNER_SEGMENTS + 1));
+        this.addRoundedCorner(perimeter, x + width - safeRadius, y + safeRadius, safeRadius, -Math.PI * 0.5, 0.0);
+        this.addRoundedCorner(perimeter, x + width - safeRadius, y + height - safeRadius, safeRadius, 0.0, Math.PI * 0.5);
+        this.addRoundedCorner(perimeter, x + safeRadius, y + height - safeRadius, safeRadius, Math.PI * 0.5, Math.PI);
+        this.addRoundedCorner(perimeter, x + safeRadius, y + safeRadius, safeRadius, Math.PI, Math.PI * 1.5);
+
+        BufferBuilder buffer = this.beginMesh(VertexFormat.Mode.TRIANGLES);
+        double centerX = x + width * 0.5;
+        double centerY = y + height * 0.5;
+
+        for (int i = 0; i < perimeter.size(); i++) {
+            double[] current = perimeter.get(i);
+            double[] next = perimeter.get((i + 1) % perimeter.size());
+            this.addVertex(guiGraphics, buffer, centerX, centerY, color);
+            this.addVertex(guiGraphics, buffer, current[0], current[1], color);
+            this.addVertex(guiGraphics, buffer, next[0], next[1], color);
+        }
+
+        this.drawMesh(buffer);
+    }
+
+    private void addRoundedCorner(List<double[]> perimeter, double centerX, double centerY, double radius,
+                                  double startAngle, double endAngle) {
+        for (int i = 0; i <= CORNER_SEGMENTS; i++) {
+            double angle = startAngle + (endAngle - startAngle) * i / CORNER_SEGMENTS;
+            perimeter.add(new double[] {centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius});
+        }
+    }
+
+    private BufferBuilder beginMesh(VertexFormat.Mode mode) {
+        RenderSystem.disableDepthTest();
+        RenderSystem.disableCull();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        RenderSystem.applyModelViewMatrix();
+        return Tesselator.getInstance().begin(mode, DefaultVertexFormat.POSITION_COLOR);
+    }
+
+    private void addVertex(GuiGraphics guiGraphics, BufferBuilder buffer, double x, double y, int color) {
+        buffer.addVertex(guiGraphics.pose().last(), (float) x, (float) y, 0.0F).setColor(color);
+    }
+
+    private void drawMesh(BufferBuilder buffer) {
+        BufferUploader.drawWithShader(buffer.buildOrThrow());
+        RenderSystem.disableBlend();
+        RenderSystem.enableCull();
+        RenderSystem.enableDepthTest();
     }
 
     private double approach(double current, double target, double speed, double deltaTime) {
@@ -583,14 +697,16 @@ public class GuiBuilderHelperMainMenu extends GuiBase {
         }
     }
 
-    private record Layout(double uiScale, int startX, int topY, int buttonWidth, int buttonHeight, int axisStartX, int axisY, int axisCardWidth, int axisCardHeight, int axisGap, int previewY, int resetX, int resetY, int resetWidth, int resetHeight, int columnGap, int rowGap, int groupGap, double textScale, double titleScale) {
+    private record Layout(double uiScale, int startX, int topY, int buttonWidth, int buttonHeight,
+                          int axisStartX, int axisY, int axisCardWidth, int axisCardHeight, int axisGap,
+                          int previewY, int resetX, int resetY, int resetWidth, int resetHeight,
+                          int backX, int backY, int backWidth, int backHeight,
+                          int panelX, int panelY, int panelWidth, int panelHeight,
+                          int columnGap, int rowGap, int groupGap, double textScale, double titleScale) {
         private int titleY() {
-            return Math.max(8, this.topY - (int) Math.round(34.0 * this.uiScale));
+            return this.panelY + Math.max(7, (int) Math.round(10.0 * this.uiScale));
         }
 
-        private int previewX() {
-            return this.axisStartX;
-        }
     }
 
     private record ButtonPlacement(MenuButton button, int x, int y, int width, int height, boolean small) {

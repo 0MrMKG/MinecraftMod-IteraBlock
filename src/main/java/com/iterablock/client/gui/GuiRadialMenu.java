@@ -31,16 +31,22 @@ public class GuiRadialMenu extends GuiBase {
     private static final double REMOVE_SPEED = 7.0;
     private static final int MIN_CIRCLE_SEGMENTS = 64;
     private static final int LARGE_CIRCLE_SEGMENTS = 128;
-    private static final double TEXT_SCALE = 0.62;
+    private static final double TEXT_SCALE = 0.54;
     private static final int TEXT_LINE_HEIGHT = 6;
     private static final int TEXT_LINE_GAP = 2;
+    private static final int COOL_LIGHT = 0xE0EBE8;
+    private static final int SOFT_GRAY = 0x9DACAA;
+    private static final int MINERAL_GREEN = 0x8BB7AD;
+    private static final int GLASS_TINT = 0x78AAA3;
+    private static final int METALLIC_RED = 0xA7535B;
+    private static final int METALLIC_RED_HIGHLIGHT = 0xD0787E;
     private static final int[] ENTRY_COLORS = {
-            0xE84A5F,
-            0xF08A3C,
-            0xE7C74A,
-            0x55B86A,
-            0x4C8FE8,
-            0xF3B7C8
+            0x6F9D94,
+            0x73949E,
+            0x618C91,
+            0x7AA49A,
+            0x6C8E99,
+            0x709C95
     };
 
     private double[] hoverProgress = new double[0];
@@ -52,7 +58,6 @@ public class GuiRadialMenu extends GuiBase {
     private Hit hoveredHit = Hit.NONE;
     private Hit pressedHit = Hit.NONE;
     private LoadedLitematicManager.Entry removingEntry;
-    private boolean releaseHandled;
     private boolean wasOpenKeyDown = true;
     private boolean centeredForClose;
 
@@ -90,13 +95,15 @@ public class GuiRadialMenu extends GuiBase {
         double unloadOuterRadius = Math.max(outerRadius + 8.0, UNLOAD_OUTER_RADIUS * scale);
 
         if (entries.isEmpty()) {
-            this.drawEmptyState(guiGraphics, centerX, centerY, innerRadius, outerRadius, unloadOuterRadius, openEase);
+            this.drawEmptyGlassRing(guiGraphics, centerX, centerY, innerRadius, outerRadius, openEase);
+            this.drawEmptyState(guiGraphics, centerX, centerY, innerRadius, openEase);
             return;
         }
 
         this.drawSectors(guiGraphics, entries, centerX, centerY, innerRadius, outerRadius, unloadOuterRadius, openEase, scale);
         this.drawSelectedArrow(guiGraphics, entries, centerX, centerY, unloadOuterRadius, openEase, scale);
         this.drawCenter(guiGraphics, centerX, centerY, innerRadius, openEase);
+        this.drawCardinalTicks(guiGraphics, centerX, centerY, innerRadius, openEase);
         this.drawLabels(guiGraphics, entries, centerX, centerY, innerRadius, outerRadius, unloadOuterRadius, openEase, scale);
         this.drawCenterText(guiGraphics, centerX, centerY, openEase);
     }
@@ -157,18 +164,12 @@ public class GuiRadialMenu extends GuiBase {
         this.hoveredHit = this.getHitAt(mouseX, mouseY, this.getOpenScale(), entries);
 
         if (openKeyDown) {
-            this.releaseHandled = false;
             this.centeredForClose = false;
             this.openProgress = Math.min(1.0, this.openProgress + deltaTime / OPEN_SECONDS);
         } else {
             if (this.wasOpenKeyDown && !this.centeredForClose) {
                 this.centerMouseOnCrosshair();
                 this.centeredForClose = true;
-            }
-
-            if (!this.releaseHandled && this.hoveredHit.type() != HitType.NONE) {
-                this.handleHit(this.hoveredHit);
-                this.releaseHandled = true;
             }
 
             this.openProgress = Math.max(0.0, this.openProgress - deltaTime / CLOSE_SECONDS);
@@ -230,46 +231,63 @@ public class GuiRadialMenu extends GuiBase {
             double endAngle = angle + sectorAngle * 0.5;
             double alpha = (1.0 - remove) * openEase;
             double pressScale = 1.0 - press * 0.035 - remove * 0.20;
-            double radialOffset = (hover * 7.0 - press * 3.0) * scale;
-            double drawCenterX = centerX + Math.cos(angle) * radialOffset;
-            double drawCenterY = centerY + Math.sin(angle) * radialOffset;
-            double sectorInner = Math.max(2.0, (innerRadius + hover * 4.0 * scale - press * 2.0 * scale) * pressScale);
-            double sectorOuter = Math.max(sectorInner + 6.0, (outerRadius + hover * 6.0 * scale) * pressScale);
+            double selectedExpansion = selected ? 3.0 * scale : 0.0;
+            double hoverExpansion = hover * 6.0 * scale;
+            double drawCenterX = centerX;
+            double drawCenterY = centerY;
+            double sectorInner = innerRadius;
+            double sectorOuter = Math.max(sectorInner + 6.0,
+                    (outerRadius + selectedExpansion + hoverExpansion) * pressScale);
             double unloadOuter = Math.max(sectorOuter + 6.0, (unloadOuterRadius + unloadHover * 8.0 * scale) * pressScale);
+            double unloadInner = Math.min(unloadOuter - 1.0, sectorOuter);
             int entryColor = selected ? this.getEntryColor(i) : this.getMutedEntryColor(i);
-            double sectorAlpha = selected ? 0.90 : 0.60;
+            double sectorAlpha = selected ? 0.44 : 0.14 + hover * 0.16;
             int sectorColor = this.withAlpha(entryColor, Math.max(0.0, sectorAlpha - press * 0.06) * alpha);
 
-            if (hover > 0.01 || selected) {
-                this.drawSector(guiGraphics, drawCenterX, drawCenterY, Math.max(1.0, sectorInner - 3.0), sectorOuter + 5.0, startAngle, endAngle, this.withAlpha(entryColor, (hover * 0.18 + (selected ? 0.16 : 0.0)) * alpha));
-            }
-
             this.drawSector(guiGraphics, drawCenterX, drawCenterY, sectorInner, sectorOuter, startAngle, endAngle, sectorColor);
+            this.drawSector(guiGraphics, drawCenterX, drawCenterY, Math.max(sectorInner, sectorOuter - 0.8), sectorOuter,
+                    startAngle, endAngle, this.withAlpha(entryColor, (selected ? 0.66 : 0.28 + hover * 0.24) * alpha));
 
-            if (unloadHover > 0.01) {
-                this.drawSector(guiGraphics, centerX, centerY, outerRadius + 1.0, unloadOuter, startAngle, endAngle, this.withAlpha(0xB4465A, (0.18 + unloadHover * 0.34) * alpha));
-            } else {
-                this.drawSector(guiGraphics, centerX, centerY, outerRadius + 1.0, unloadOuterRadius, startAngle, endAngle, this.withAlpha(0x7E2C38, 0.08 * alpha));
-            }
+            this.drawSector(guiGraphics, centerX, centerY, unloadInner, unloadOuter, startAngle, endAngle,
+                    this.withAlpha(METALLIC_RED, (0.08 + unloadHover * 0.40) * alpha));
+            this.drawSector(guiGraphics, centerX, centerY, unloadOuter - 0.8, unloadOuter, startAngle, endAngle,
+                    this.withAlpha(METALLIC_RED_HIGHLIGHT, (0.28 + unloadHover * 0.42) * alpha));
         }
     }
 
     private void drawCenter(GuiGraphics guiGraphics, int centerX, int centerY, double innerRadius, double openEase) {
-        double fillRadius = Math.max(4.0, innerRadius - 5.0);
+        double fillRadius = Math.max(4.0, innerRadius);
 
-        this.drawCircle(guiGraphics, centerX, centerY, fillRadius, this.withAlpha(0x0B1822, 0.78 * openEase));
-        this.drawCircle(guiGraphics, centerX, centerY - Math.max(1.0, innerRadius / 5.0), Math.max(2.0, innerRadius / 2.0), this.withAlpha(0xFFFFFF, 0.09 * openEase));
+        this.drawCircle(guiGraphics, centerX, centerY, fillRadius, this.withAlpha(GLASS_TINT, 0.22 * openEase));
+        this.drawSector(guiGraphics, centerX, centerY, fillRadius - 1.2, fillRadius, 0.0, Math.PI * 2.0,
+                this.withAlpha(COOL_LIGHT, 0.62 * openEase));
     }
 
-    private void drawEmptyState(GuiGraphics guiGraphics, int centerX, int centerY, double innerRadius, double outerRadius, double unloadOuterRadius, double openEase) {
-        this.drawEmptyRing(guiGraphics, centerX, centerY, innerRadius, outerRadius, unloadOuterRadius, openEase);
+    private void drawEmptyState(GuiGraphics guiGraphics, int centerX, int centerY, double innerRadius, double openEase) {
         this.drawCenter(guiGraphics, centerX, centerY, innerRadius, openEase);
-        this.drawCenteredTextBlock(guiGraphics, centerX, centerY, new String[] { Lang.tr("iterablock.gui.radial.no_loaded"), Lang.tr("iterablock.gui.radial.press_i") }, new int[] { this.withAlpha(0xEAFBFF, openEase), this.withAlpha(0xA7D9E6, openEase) });
+        this.drawCardinalTicks(guiGraphics, centerX, centerY, innerRadius, openEase);
+        this.drawCenteredTextBlock(guiGraphics, centerX, centerY,
+                new String[] { Lang.tr("iterablock.gui.radial.no_loaded"), Lang.tr("iterablock.gui.radial.press_i") },
+                new int[] { this.withAlpha(COOL_LIGHT, openEase), this.withAlpha(MINERAL_GREEN, 0.82 * openEase) });
     }
 
-    private void drawEmptyRing(GuiGraphics guiGraphics, int centerX, int centerY, double innerRadius, double outerRadius, double unloadOuterRadius, double openEase) {
-        this.drawSector(guiGraphics, centerX, centerY, innerRadius, outerRadius, 0.0, Math.PI * 2.0, this.withAlpha(0x0A1118, 0.36 * openEase));
-        this.drawSector(guiGraphics, centerX, centerY, outerRadius + 1.0, unloadOuterRadius, 0.0, Math.PI * 2.0, this.withAlpha(0x102431, 0.18 * openEase));
+    private void drawEmptyGlassRing(GuiGraphics guiGraphics, int centerX, int centerY, double innerRadius, double outerRadius, double openEase) {
+        this.drawSector(guiGraphics, centerX, centerY, innerRadius, outerRadius, 0.0, Math.PI * 2.0,
+                this.withAlpha(GLASS_TINT, 0.10 * openEase));
+        this.drawSector(guiGraphics, centerX, centerY, outerRadius - 0.8, outerRadius, 0.0, Math.PI * 2.0,
+                this.withAlpha(MINERAL_GREEN, 0.42 * openEase));
+    }
+
+    private void drawCardinalTicks(GuiGraphics guiGraphics, int centerX, int centerY, double innerRadius, double openEase) {
+        double tickInner = Math.max(1.0, innerRadius - 4.0);
+        double tickOuter = innerRadius + 3.0;
+        double halfAngle = 0.012;
+        int color = this.withAlpha(COOL_LIGHT, 0.58 * openEase);
+
+        for (int i = 0; i < 4; i++) {
+            double angle = -Math.PI / 2.0 + i * Math.PI / 2.0;
+            this.drawSector(guiGraphics, centerX, centerY, tickInner, tickOuter, angle - halfAngle, angle + halfAngle, color);
+        }
     }
 
     private void drawLabels(GuiGraphics guiGraphics, List<LoadedLitematicManager.Entry> entries, int centerX, int centerY, double innerRadius, double outerRadius, double unloadOuterRadius, double openEase, double scale) {
@@ -282,24 +300,23 @@ public class GuiRadialMenu extends GuiBase {
         for (int i = 0; i < entries.size(); i++) {
             double hover = this.hoverProgress[i];
             double unloadHover = this.unloadHoverProgress[i];
-            double press = this.pressProgress[i];
             double remove = this.removeProgress[i];
             double angle = this.getSectorCenterAngle(i, entries.size());
-            double labelRadius = baseLabelRadius + (hover * 7.0 - press * 3.0) * scale;
+            double labelRadius = baseLabelRadius;
             String[] labelLines = this.wrapLabel(entries.get(i).displayName(), 10);
             int x = centerX + (int) Math.round(Math.cos(angle) * labelRadius);
             int y = centerY + (int) Math.round(Math.sin(angle) * labelRadius);
             boolean selected = entries.get(i) == LoadedLitematicManager.selectedEntry;
-            double alpha = (0.62 + hover * 0.30 + (selected ? 0.18 : 0.0)) * (1.0 - remove) * openEase;
+            double alpha = (0.58 + hover * 0.28 + (selected ? 0.20 : 0.0)) * (1.0 - remove) * openEase;
 
-            this.drawCenteredTextBlock(guiGraphics, x, y, labelLines, this.withAlpha(selected ? 0xFFFFFF : 0xD9E3E6, alpha));
+            this.drawCenteredTextBlock(guiGraphics, x, y, labelLines, this.withAlpha(selected ? COOL_LIGHT : SOFT_GRAY, alpha));
 
             if (unloadHover > 0.02) {
                 String unload = Lang.tr("iterablock.gui.radial.unload");
                 double unloadRadius = (outerRadius + unloadOuterRadius) / 2.0 + unloadHover * 5.0 * scale;
                 int unloadX = centerX + (int) Math.round(Math.cos(angle) * unloadRadius);
                 int unloadY = centerY + (int) Math.round(Math.sin(angle) * unloadRadius) - TEXT_LINE_HEIGHT / 2;
-                this.drawCentered(guiGraphics, unload, unloadX, unloadY, this.withAlpha(0xFFD6DC, unloadHover * openEase));
+                this.drawCentered(guiGraphics, unload, unloadX, unloadY, this.withAlpha(0xA7B6B8, unloadHover * openEase));
             }
         }
     }
@@ -310,19 +327,18 @@ public class GuiRadialMenu extends GuiBase {
 
         if (this.hoveredHit.type() == HitType.SELECT) {
             lines = this.withPrefixLine(Lang.tr("iterablock.gui.radial.select"), this.wrapLabel(this.hoveredHit.entry().displayName(), 13));
-            colors = this.centerColors(lines.length, this.withAlpha(0xEAFBFF, openEase), this.withAlpha(0xFFFFFF, openEase));
+            colors = this.centerColors(lines.length, this.withAlpha(MINERAL_GREEN, openEase), this.withAlpha(COOL_LIGHT, openEase));
         } else if (this.hoveredHit.type() == HitType.UNLOAD) {
             lines = this.withPrefixLine(Lang.tr("iterablock.gui.radial.unload"), this.wrapLabel(this.hoveredHit.entry().displayName(), 13));
-            colors = this.centerColors(lines.length, this.withAlpha(0xFFD6DC, openEase), this.withAlpha(0xFFFFFF, openEase));
+            colors = this.centerColors(lines.length, this.withAlpha(0xA7B6B8, openEase), this.withAlpha(COOL_LIGHT, openEase));
         } else if (LoadedLitematicManager.selectedEntry != null) {
             lines = this.wrapLabel(LoadedLitematicManager.selectedEntry.displayName(), 13);
-            colors = this.centerColors(lines.length, this.withAlpha(0xEAFBFF, openEase), this.withAlpha(0xEAFBFF, openEase));
+            colors = this.centerColors(lines.length, this.withAlpha(COOL_LIGHT, openEase), this.withAlpha(COOL_LIGHT, openEase));
         } else {
             lines = new String[] { "IteraBlock" };
-            colors = this.centerColors(lines.length, this.withAlpha(0xEAFBFF, openEase), this.withAlpha(0xEAFBFF, openEase));
+            colors = this.centerColors(lines.length, this.withAlpha(COOL_LIGHT, openEase), this.withAlpha(COOL_LIGHT, openEase));
         }
 
-        this.drawCenterTextBackdrop(guiGraphics, centerX, centerY, lines, openEase);
         this.drawCenteredTextBlock(guiGraphics, centerX, centerY, lines, colors);
     }
 
@@ -348,7 +364,15 @@ public class GuiRadialMenu extends GuiBase {
             return Hit.NONE;
         }
 
-        if (distanceSquared <= outerRadius * outerRadius) {
+        double selectOuterRadius = outerRadius;
+        if (index < this.hoverProgress.length) {
+            if (entries.get(index) == LoadedLitematicManager.selectedEntry) {
+                selectOuterRadius += 3.0 * scale;
+            }
+            selectOuterRadius += this.hoverProgress[index] * 6.0 * scale;
+        }
+
+        if (distanceSquared <= selectOuterRadius * selectOuterRadius) {
             return new Hit(HitType.SELECT, index, entries.get(index));
         }
 
@@ -375,14 +399,14 @@ public class GuiRadialMenu extends GuiBase {
         double sin = Math.sin(angle);
         double tangentX = -sin;
         double tangentY = cos;
-        double tipRadius = unloadOuterRadius + 12.0 * scale;
-        double baseRadius = unloadOuterRadius + 4.0 * scale;
-        double halfWidth = 5.0 * scale;
+        double tipRadius = unloadOuterRadius + 7.0 * scale;
+        double baseRadius = unloadOuterRadius + 2.0 * scale;
+        double halfWidth = 2.5 * scale;
         double tipX = centerX + cos * tipRadius;
         double tipY = centerY + sin * tipRadius;
         double baseX = centerX + cos * baseRadius;
         double baseY = centerY + sin * baseRadius;
-        int color = this.withAlpha(this.getEntryColor(selectedIndex), 0.86 * openEase);
+        int color = this.withAlpha(MINERAL_GREEN, 0.82 * openEase);
 
         this.drawTriangle(guiGraphics,
                 tipX, tipY,
@@ -540,7 +564,7 @@ public class GuiRadialMenu extends GuiBase {
     private void drawScaledString(GuiGraphics guiGraphics, String text, double x, double y, int color) {
         guiGraphics.pose().pushPose();
         guiGraphics.pose().scale((float) TEXT_SCALE, (float) TEXT_SCALE, 1.0F);
-        this.drawStringWithShadow(guiGraphics, text, (int) Math.round(x / TEXT_SCALE), (int) Math.round(y / TEXT_SCALE), color);
+        guiGraphics.drawString(this.textRenderer, text, (int) Math.round(x / TEXT_SCALE), (int) Math.round(y / TEXT_SCALE), color, false);
         guiGraphics.pose().popPose();
     }
 
@@ -562,21 +586,6 @@ public class GuiRadialMenu extends GuiBase {
         }
 
         this.drawCenteredTextBlock(guiGraphics, centerX, centerY, lines, colors);
-    }
-
-    private void drawCenterTextBackdrop(GuiGraphics guiGraphics, int centerX, int centerY, String[] lines, double openEase) {
-        double maxWidth = 0.0;
-
-        for (String line : lines) {
-            maxWidth = Math.max(maxWidth, this.getStringWidth(line) * TEXT_SCALE);
-        }
-
-        double totalHeight = lines.length * TEXT_LINE_HEIGHT + Math.max(0, lines.length - 1) * TEXT_LINE_GAP;
-        double radius = Math.max(24.0, Math.max(maxWidth / 2.0 + 14.0, totalHeight / 2.0 + 12.0));
-
-        this.drawCircle(guiGraphics, centerX, centerY, radius + 5.0, this.withAlpha(0x03070A, 0.28 * openEase));
-        this.drawCircle(guiGraphics, centerX, centerY, radius + 2.0, this.withAlpha(0x071116, 0.86 * openEase));
-        this.drawCircle(guiGraphics, centerX, centerY - radius * 0.20, radius * 0.58, this.withAlpha(0xFFFFFF, 0.07 * openEase));
     }
 
     private int[] centerColors(int length, int firstColor, int restColor) {
@@ -658,7 +667,7 @@ public class GuiRadialMenu extends GuiBase {
     }
 
     private int getMutedEntryColor(int index) {
-        return this.blendRgb(this.getEntryColor(index), 0x9AA2A4, 0.62);
+        return this.blendRgb(this.getEntryColor(index), SOFT_GRAY, 0.58);
     }
 
     private void ensureAnimationSize(int size) {

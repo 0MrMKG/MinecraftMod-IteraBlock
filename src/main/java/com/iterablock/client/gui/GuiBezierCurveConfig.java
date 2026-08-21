@@ -9,12 +9,16 @@ import org.lwjgl.glfw.GLFW;
 
 public class GuiBezierCurveConfig extends GuiBase {
     private static final int SAFE_MARGIN = 22;
-    private static final int ROW_HEIGHT = 22;
-    private static final int ROW_GAP = 4;
-    private static final int VALUE_WIDTH = 112;
+    private static final int PANEL_MAX_WIDTH = 260;
+    private static final int SECTION_HEIGHT = 18;
+    private static final int ROW_HEIGHT = 16;
+    private static final int ROW_GAP = 2;
+    private static final int VALUE_WIDTH = 96;
+    private static final int CONTROL_HEIGHT = 14;
+    private static final int RESET_WIDTH = 42;
     private static final int BACK_WIDTH = 58;
     private static final int BACK_HEIGHT = 16;
-    private static final double TEXT_SCALE = 0.58;
+    private static final double TEXT_SCALE = 0.52;
     private static final int TITLE_COLOR = 0xFFF3EECF;
     private static final int TEXT_COLOR = 0xFFDDE8E8;
     private static final int ACTIVE_COLOR = 0xFFFFFFB8;
@@ -71,7 +75,13 @@ public class GuiBezierCurveConfig extends GuiBase {
             for (Field field : Field.values()) {
                 Row row = this.getRow(layout, field.ordinal());
 
-                if (this.isInside(mouseX, mouseY, row.valueX(), row.y() + 3, VALUE_WIDTH, 16)) {
+                if (this.isInside(mouseX, mouseY, row.resetX(), row.y() + 1, RESET_WIDTH, CONTROL_HEIGHT)) {
+                    this.commitEditingValue();
+                    this.resetField(field);
+                    return true;
+                }
+
+                if (this.isInside(mouseX, mouseY, row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT)) {
                     if (field.booleanField()) {
                         this.commitEditingValue();
                         BuilderHelperClientConfig.setBezierPlaceNbtMode(!BuilderHelperClientConfig.isBezierPlaceNbtMode());
@@ -132,9 +142,12 @@ public class GuiBezierCurveConfig extends GuiBase {
     private void drawPanel(GuiGraphics guiGraphics, Layout layout) {
         guiGraphics.fill(layout.x(), layout.panelY(), layout.x() + layout.width(), layout.panelY() + layout.panelHeight(), 0x7A0B1012);
         guiGraphics.fill(layout.x(), layout.panelY(), layout.x() + layout.width(), layout.panelY() + 1, 0xBFFFFFFF);
-        guiGraphics.fill(layout.x(), layout.panelY() + 25, layout.x() + layout.width(), layout.panelY() + 26, 0x553D5558);
-        guiGraphics.fill(layout.x(), layout.panelY() + 25, layout.x() + 52, layout.panelY() + 27, ACCENT);
-        this.drawText(guiGraphics, Lang.tr("iterablock.gui.bezier_config.section.basic"), layout.x() + 8, layout.panelY() + 9, TEXT_COLOR, false);
+        guiGraphics.fill(layout.x(), layout.panelY(), layout.x() + 1, layout.panelY() + layout.panelHeight(), 0x66FFFFFF);
+        guiGraphics.fill(layout.x() + layout.width() - 1, layout.panelY(), layout.x() + layout.width(), layout.panelY() + layout.panelHeight(), 0x66FFFFFF);
+        guiGraphics.fill(layout.x(), layout.panelY() + layout.panelHeight() - 1, layout.x() + layout.width(), layout.panelY() + layout.panelHeight(), 0x66FFFFFF);
+        guiGraphics.fill(layout.x(), layout.panelY() + SECTION_HEIGHT, layout.x() + layout.width(), layout.panelY() + SECTION_HEIGHT + 1, 0x553D5558);
+        guiGraphics.fill(layout.x(), layout.panelY() + SECTION_HEIGHT - 2, layout.x() + 52, layout.panelY() + SECTION_HEIGHT, ACCENT);
+        this.drawCenteredText(guiGraphics, Lang.tr("iterablock.gui.bezier_config.section.basic"), layout.x(), layout.panelY(), 86, SECTION_HEIGHT, TEXT_COLOR);
     }
 
     private void drawRows(GuiGraphics guiGraphics, Layout layout) {
@@ -145,16 +158,12 @@ public class GuiBezierCurveConfig extends GuiBase {
     }
 
     private void drawConfigRow(GuiGraphics guiGraphics, Row row, String label, String value) {
-        guiGraphics.fill(row.x(), row.y(), row.x() + row.width(), row.y() + ROW_HEIGHT, 0x22101719);
-        guiGraphics.fill(row.x(), row.y(), row.x() + 2, row.y() + ROW_HEIGHT, 0x66786A75);
-        this.drawText(guiGraphics, label, row.x() + 10, row.y() + 8, TEXT_COLOR, false);
-
-        guiGraphics.fill(row.valueX(), row.y() + 3, row.valueX() + VALUE_WIDTH, row.y() + 19, 0x8A4A5050);
-        guiGraphics.fill(row.valueX(), row.y() + 3, row.valueX() + VALUE_WIDTH, row.y() + 4, 0xBFFFFFFF);
-        guiGraphics.fill(row.valueX(), row.y() + 18, row.valueX() + VALUE_WIDTH, row.y() + 19, 0xBFFFFFFF);
-        guiGraphics.fill(row.valueX(), row.y() + 3, row.valueX() + 1, row.y() + 19, 0xBFFFFFFF);
-        guiGraphics.fill(row.valueX() + VALUE_WIDTH - 1, row.y() + 3, row.valueX() + VALUE_WIDTH, row.y() + 19, 0xBFFFFFFF);
-        this.drawCenteredText(guiGraphics, value, row.valueX(), row.y() + 3, VALUE_WIDTH, 16, TEXT_COLOR);
+        int controlY = row.y() + 1;
+        this.drawSimpleButton(guiGraphics, row.x(), controlY, row.labelWidth(), CONTROL_HEIGHT,
+                this.fitText(label, row.labelWidth() - 8), false);
+        this.drawSimpleButton(guiGraphics, row.valueX(), controlY, row.valueWidth(), CONTROL_HEIGHT, value, false);
+        this.drawSimpleButton(guiGraphics, row.resetX(), controlY, RESET_WIDTH, CONTROL_HEIGHT,
+                Lang.tr("iterablock.gui.settings.reset"), false);
     }
 
     private void drawBackButton(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
@@ -177,8 +186,12 @@ public class GuiBezierCurveConfig extends GuiBase {
 
     private Row getRow(Layout layout, int index) {
         int y = layout.listY() + index * (ROW_HEIGHT + ROW_GAP);
-        int valueX = layout.x() + layout.width() - VALUE_WIDTH - 10;
-        return new Row(layout.x() + 6, y, layout.width() - 12, valueX);
+        int rowX = layout.x() + 6;
+        int resetX = layout.x() + layout.width() - RESET_WIDTH - 6;
+        int labelWidth = Math.max(52, Math.min(VALUE_WIDTH, (resetX - rowX) / 2 - 4));
+        int valueX = rowX + labelWidth + 6;
+        int valueWidth = Math.max(42, resetX - valueX - 6);
+        return new Row(rowX, y, resetX - rowX, labelWidth, valueX, valueWidth, resetX);
     }
 
     private void startEditing(Field field) {
@@ -243,14 +256,29 @@ public class GuiBezierCurveConfig extends GuiBase {
         }
     }
 
+    private void resetField(Field field) {
+        switch (field) {
+            case PLACEMENT_PRECISION -> BuilderHelperClientConfig.setBezierPlacementPrecision(BuilderHelperClientConfig.DEFAULT_BEZIER_PLACEMENT_PRECISION);
+            case PLACEMENT_WIDTH -> BuilderHelperClientConfig.setBezierPlacementWidth(BuilderHelperClientConfig.DEFAULT_BEZIER_PLACEMENT_WIDTH);
+            case CONTROL_POINT_COUNT -> BuilderHelperClientConfig.setBezierControlPointCount(BuilderHelperClientConfig.DEFAULT_BEZIER_CONTROL_POINT_COUNT);
+            case PLACE_NBT_MODE -> BuilderHelperClientConfig.setBezierPlaceNbtMode(BuilderHelperClientConfig.DEFAULT_BEZIER_PLACE_NBT_MODE);
+        }
+    }
+
     private Layout createLayout() {
-        int width = Math.min(this.width - SAFE_MARGIN * 2, 420);
+        int horizontalMargin = Math.min(SAFE_MARGIN, Math.max(4, (this.width - 180) / 2));
+        int availableWidth = Math.max(1, this.width - horizontalMargin * 2);
+        int width = Math.min(availableWidth, PANEL_MAX_WIDTH);
         int x = (this.width - width) / 2;
         int titleY = Math.max(10, SAFE_MARGIN);
         int panelY = titleY + 20;
-        int backY = this.height - SAFE_MARGIN - BACK_HEIGHT;
-        int panelHeight = Math.max(120, backY - panelY - 10);
-        int listY = panelY + 34;
+        int desiredPanelHeight = SECTION_HEIGHT + 8 + Field.values().length * ROW_HEIGHT
+                + (Field.values().length - 1) * ROW_GAP + 8;
+        int maximumPanelHeight = Math.max(SECTION_HEIGHT + ROW_HEIGHT + 16,
+                this.height - SAFE_MARGIN - BACK_HEIGHT - panelY - 10);
+        int panelHeight = Math.min(desiredPanelHeight, maximumPanelHeight);
+        int listY = panelY + SECTION_HEIGHT + 8;
+        int backY = Math.min(this.height - SAFE_MARGIN - BACK_HEIGHT, panelY + panelHeight + 8);
         int backX = x + width - BACK_WIDTH;
         return new Layout(x, titleY, panelY, width, panelHeight, listY, backX, backY);
     }
@@ -275,6 +303,25 @@ public class GuiBezierCurveConfig extends GuiBase {
         this.drawText(guiGraphics, text, textX, textY, color, false);
     }
 
+    private String fitText(String text, int maxWidth) {
+        if (this.textRenderer.width(text) * TEXT_SCALE <= maxWidth) {
+            return text;
+        }
+
+        String suffix = "...";
+        int suffixWidth = (int) Math.ceil(this.textRenderer.width(suffix) * TEXT_SCALE);
+        if (suffixWidth > maxWidth) {
+            return "";
+        }
+        String result = text;
+
+        while (!result.isEmpty() && this.textRenderer.width(result) * TEXT_SCALE + suffixWidth > maxWidth) {
+            result = result.substring(0, result.length() - 1);
+        }
+
+        return result.isEmpty() ? suffix : result + suffix;
+    }
+
     private boolean isInside(int mouseX, int mouseY, int x, int y, int width, int height) {
         return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
@@ -282,7 +329,7 @@ public class GuiBezierCurveConfig extends GuiBase {
     private record Layout(int x, int titleY, int panelY, int width, int panelHeight, int listY, int backX, int backY) {
     }
 
-    private record Row(int x, int y, int width, int valueX) {
+    private record Row(int x, int y, int width, int labelWidth, int valueX, int valueWidth, int resetX) {
     }
 
     private enum Field {

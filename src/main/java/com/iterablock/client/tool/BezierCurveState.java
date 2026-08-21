@@ -1,6 +1,7 @@
 package com.iterablock.client.tool;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -14,6 +15,14 @@ public final class BezierCurveState {
     private static final int MAX_SAMPLES = 4096;
     private static final List<BlockPos> CONTROL_POINTS = new ArrayList<>();
     private static final List<BlockPos> PREVIOUS_CONTROL_POINTS = new ArrayList<>();
+    private static final List<BlockPos> CONTROL_POINTS_VIEW = Collections.unmodifiableList(CONTROL_POINTS);
+    private static final List<BlockPos> PREVIOUS_CONTROL_POINTS_VIEW = Collections.unmodifiableList(PREVIOUS_CONTROL_POINTS);
+    private static int revision;
+    private static CurveCacheKey cachedCurveKey;
+    private static List<CurvePlacement> cachedCurvePlacements = List.of();
+    private static List<BlockPos> cachedCurveBlocks = List.of();
+    private static SampleCountKey cachedSampleCountKey;
+    private static int cachedSamplePointCount;
 
     private BezierCurveState() {
     }
@@ -23,19 +32,25 @@ public final class BezierCurveState {
             PREVIOUS_CONTROL_POINTS.clear();
             PREVIOUS_CONTROL_POINTS.addAll(CONTROL_POINTS);
             CONTROL_POINTS.clear();
+            invalidateCache();
             return false;
         }
 
         CONTROL_POINTS.add(point);
+        invalidateCache();
         return true;
     }
 
     public static List<BlockPos> getControlPoints() {
-        return List.copyOf(CONTROL_POINTS);
+        return CONTROL_POINTS_VIEW;
     }
 
     public static List<BlockPos> getPreviousControlPoints() {
-        return List.copyOf(PREVIOUS_CONTROL_POINTS);
+        return PREVIOUS_CONTROL_POINTS_VIEW;
+    }
+
+    public static int getRevision() {
+        return revision;
     }
 
     public static int getPointCount() {
@@ -53,6 +68,7 @@ public final class BezierCurveState {
     public static void clear() {
         CONTROL_POINTS.clear();
         PREVIOUS_CONTROL_POINTS.clear();
+        invalidateCache();
     }
 
     public static List<BlockPos> getCurveBlocks() {
@@ -60,19 +76,28 @@ public final class BezierCurveState {
     }
 
     public static List<BlockPos> getCurveBlocks(int precision, int width) {
-        List<CurvePlacement> placements = getCurvePlacements(precision, width);
-        Set<BlockPos> blocks = new LinkedHashSet<>();
-
-        for (CurvePlacement placement : placements) {
-            blocks.add(placement.pos());
-        }
-
-        return List.copyOf(blocks);
+        ensureCurveCache(precision, width);
+        return cachedCurveBlocks;
     }
 
     public static List<CurvePlacement> getCurvePlacements(int precision, int width) {
+        ensureCurveCache(precision, width);
+        return cachedCurvePlacements;
+    }
+
+    private static void ensureCurveCache(int precision, int width) {
+        CurveCacheKey key = new CurveCacheKey(revision, getRequiredPointCount(), Math.max(1, precision), Math.max(1, width));
+
+        if (key.equals(cachedCurveKey)) {
+            return;
+        }
+
+        cachedCurveKey = key;
+
         if (!isReady()) {
-            return List.of();
+            cachedCurvePlacements = List.of();
+            cachedCurveBlocks = List.of();
+            return;
         }
 
         List<Vec3> points = getActiveCurvePoints();
@@ -89,7 +114,12 @@ public final class BezierCurveState {
             addWidthPlacements(current, getRotationStepsForTangent(tangent), radius, visited, placements);
         }
 
-        return List.copyOf(placements);
+        cachedCurvePlacements = List.copyOf(placements);
+        Set<BlockPos> blocks = new LinkedHashSet<>();
+        for (CurvePlacement placement : cachedCurvePlacements) {
+            blocks.add(placement.pos());
+        }
+        cachedCurveBlocks = List.copyOf(blocks);
     }
 
     public static int getSamplePointCount() {
@@ -97,9 +127,25 @@ public final class BezierCurveState {
             return 0;
         }
 
+        SampleCountKey key = new SampleCountKey(revision, getRequiredPointCount(), BuilderHelperClientConfig.getBezierPlacementPrecision());
+        if (key.equals(cachedSampleCountKey)) {
+            return cachedSamplePointCount;
+        }
+
         List<Vec3> points = getActiveCurvePoints();
         int step = Math.max(1, BuilderHelperClientConfig.getBezierPlacementPrecision());
-        return Math.min(MAX_SAMPLES, Math.max(1, (int) Math.ceil(estimateLength(points) / step))) + 1;
+        cachedSampleCountKey = key;
+        cachedSamplePointCount = Math.min(MAX_SAMPLES, Math.max(1, (int) Math.ceil(estimateLength(points) / step))) + 1;
+        return cachedSamplePointCount;
+    }
+
+    private static void invalidateCache() {
+        revision++;
+        cachedCurveKey = null;
+        cachedCurvePlacements = List.of();
+        cachedCurveBlocks = List.of();
+        cachedSampleCountKey = null;
+        cachedSamplePointCount = 0;
     }
 
     private static List<Vec3> getActiveCurvePoints() {
@@ -202,5 +248,11 @@ public final class BezierCurveState {
     }
 
     public record CurvePlacement(BlockPos pos, int rotationSteps) {
+    }
+
+    private record CurveCacheKey(int revision, int requiredPointCount, int precision, int width) {
+    }
+
+    private record SampleCountKey(int revision, int requiredPointCount, int precision) {
     }
 }

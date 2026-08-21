@@ -32,7 +32,6 @@ import net.minecraft.world.item.Items;
 public final class ToolState {
     private static final int PLACE_COMMAND_BATCH_SIZE = 256;
     private static final int FOLLOW_PREVIEW_RANGE = 64;
-    private static final double RANDOM_AREA_REPLACE_CHANCE = 0.35D;
     private static final Path TEMPORARY_AREA_PATH = Path.of(".iterablock-memory", "temporary-area.litematic").toAbsolutePath().normalize();
     private static final Random RANDOM = new Random();
     private static ToolMode mode = ToolMode.AREA_COPY_PASTE;
@@ -182,28 +181,6 @@ public final class ToolState {
                 Lang.tr(arrayMode == SchematicPlacementState.ArrayMode.LINEAR
                         ? "iterablock.tool.array.mode.linear"
                         : "iterablock.tool.array.mode.volume")));
-        return true;
-    }
-
-    public static boolean adjustRingRadius(Minecraft minecraft, int amount) {
-        if (mode != ToolMode.RING_PLACEMENT || minecraft.player == null || amount == 0) {
-            return false;
-        }
-
-        RingPlacementState.adjustRadius(amount);
-        SchematicProjectionRenderer.getInstance().clearCache();
-        setLastAction("\u5706\u73af\u534a\u5f84\uff1a" + RingPlacementState.getRadius());
-        return true;
-    }
-
-    public static boolean adjustRingCount(int amount) {
-        if (mode != ToolMode.RING_PLACEMENT || amount == 0) {
-            return false;
-        }
-
-        RingPlacementState.adjustCount(amount);
-        SchematicProjectionRenderer.getInstance().clearCache();
-        setLastAction("\u5706\u73af\u6570\u91cf\uff1a" + RingPlacementState.getCount());
         return true;
     }
 
@@ -453,7 +430,6 @@ public final class ToolState {
         switch (mode) {
             case AREA_COPY_PASTE -> handleAreaSelectionSecondary(minecraft);
             case SCHEMATIC_PLACEMENT, ARRAY_PLACEMENT -> handleSchematicPlacementSecondary(minecraft);
-            case RING_PLACEMENT -> handleRingPlacementSecondary(minecraft);
             case BEZIER_CURVE_GENERATION -> handleBezierSecondary(minecraft);
             case SYMMETRY_PLACEMENT -> handleSymmetrySecondary(minecraft);
             case RANDOM_SCHEMATIC_PLACEMENT -> {
@@ -559,7 +535,8 @@ public final class ToolState {
             for (int z = min.getZ(); z <= max.getZ(); z++) {
                 for (int x = min.getX(); x <= max.getX(); x++) {
                     BlockPos pos = new BlockPos(x, y, z);
-                    if (matchesRandomAreaNoise(pos, seed)) {
+                    if ((BuilderHelperClientConfig.isRandomAreaIncludeAir() || !minecraft.level.getBlockState(pos).isAir())
+                            && matchesRandomAreaNoise(pos, seed)) {
                         batcher.accept(new PlacedBlock(pos, state));
                     }
                 }
@@ -577,7 +554,7 @@ public final class ToolState {
         value = (value ^ (value >>> 27)) * 0x94D049BB133111EBL;
         value ^= value >>> 31;
         double normalized = (value >>> 11) * 0x1.0p-53;
-        return normalized < RANDOM_AREA_REPLACE_CHANCE;
+        return normalized < BuilderHelperClientConfig.getRandomAreaReplaceChance() / 100.0D;
     }
 
     public static boolean placeBezierCurve(Minecraft minecraft) {
@@ -692,17 +669,6 @@ public final class ToolState {
         setLastAction(withCurrentLitematic(Lang.tr("iterablock.tool.action.placement_projected")));
     }
 
-    private static void handleRingPlacementSecondary(Minecraft minecraft) {
-        if (ClientToolState.currentLitematic == null) {
-            setLastAction(Lang.tr("iterablock.tool.action.no_litematic"));
-            return;
-        }
-
-        BlockPos center = getPlacementOrigin(minecraft);
-        SchematicPlacementState.place(ClientToolState.currentLitematic, center);
-        setLastAction(withCurrentLitematic("\u5706\u73af\u5706\u5fc3\u5df2\u8bbe\u7f6e\uff1a" + center.getX() + ", " + center.getY() + ", " + center.getZ()));
-    }
-
     private static void handleAreaSelectionPrimary(Minecraft minecraft) {
         if (minecraft.player == null) {
             return;
@@ -789,16 +755,6 @@ public final class ToolState {
     }
 
     private static void collectBlocks(BlockPos origin, LitematicaSchematicInfo info, Consumer<PlacedBlock> collector) {
-        if (mode == ToolMode.RING_PLACEMENT) {
-            List<BlockPos> offsets = RingPlacementState.getOffsets();
-
-            for (int i = 0; i < offsets.size(); i++) {
-                collectBlocksForOrigin(origin.offset(offsets.get(i)), info, collector, RingPlacementState.getRotationSteps(i), SchematicPlacementState.getMirrorAxis());
-            }
-
-            return;
-        }
-
         BlockPos arrayStep = SchematicPlacementState.getLinearArrayStep(info);
         List<BlockPos> offsets = getPlacementOffsets(arrayStep);
 

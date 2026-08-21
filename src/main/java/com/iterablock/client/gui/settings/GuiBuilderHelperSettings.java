@@ -28,16 +28,16 @@ import org.lwjgl.glfw.GLFW;
 
 public class GuiBuilderHelperSettings extends GuiBase {
     private static final int SAFE_MARGIN = 22;
-    private static final int TOP_Y = 28;
-    private static final int TAB_HEIGHT = 15;
-    private static final int TAB_GAP = 2;
-    private static final int ROW_HEIGHT = 22;
+    private static final int PANEL_MAX_WIDTH = 260;
+    private static final int TAB_HEIGHT = 18;
+    private static final int TAB_GAP = 0;
+    private static final int ROW_HEIGHT = 16;
     private static final int ROW_GAP = 2;
-    private static final int VALUE_WIDTH = 138;
-    private static final int RESET_WIDTH = 48;
-    private static final int BACK_BUTTON_WIDTH = 52;
+    private static final int CONTROL_HEIGHT = 14;
+    private static final int RESET_WIDTH = 42;
+    private static final int BACK_BUTTON_WIDTH = 58;
     private static final int BACK_BUTTON_HEIGHT = 16;
-    private static final double TEXT_SCALE = 0.56;
+    private static final double TEXT_SCALE = 0.52;
     private static final double HOVER_SPEED = 8.0;
     private static final int INDICATOR_SEGMENTS = 3;
     private static final int INDICATOR_TOP_RGB = 0xF3C6D3;
@@ -95,8 +95,8 @@ public class GuiBuilderHelperSettings extends GuiBase {
         this.updateAnimations(mouseX, mouseY, layout);
 
         this.drawTextWithShadow(guiGraphics, Lang.tr("iterablock.gui.settings.title"), layout.x(), layout.titleY(), 0xFFF3EECF);
-        this.drawTabs(guiGraphics, mouseX, mouseY, layout);
         this.drawListPanel(guiGraphics, mouseX, mouseY, layout);
+        this.drawTabs(guiGraphics, mouseX, mouseY, layout);
         this.drawCategoryNote(guiGraphics, layout);
         this.drawBackButton(guiGraphics, mouseX, mouseY, layout);
     }
@@ -117,7 +117,7 @@ public class GuiBuilderHelperSettings extends GuiBase {
         }
 
         for (Category tab : Category.values()) {
-            int tabWidth = this.getTabWidth(tab);
+            int tabWidth = this.getTabWidth(layout);
 
             if (this.isInside(mouseX, mouseY, tabX, layout.tabY(), tabWidth, TAB_HEIGHT)) {
                 this.category = tab;
@@ -133,12 +133,12 @@ public class GuiBuilderHelperSettings extends GuiBase {
         for (RowPlacement row : this.getVisibleRows(layout)) {
             ConfigEntry entry = row.entry();
 
-            if (this.isInside(mouseX, mouseY, row.valueX(), row.y() + 3, row.valueWidth(), 16)) {
+            if (this.isInside(mouseX, mouseY, row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT)) {
                 this.handleValueClick(entry);
                 return true;
             }
 
-            if (this.isInside(mouseX, mouseY, row.resetX(), row.y() + 3, RESET_WIDTH, 16)) {
+            if (this.isInside(mouseX, mouseY, row.resetX(), row.y() + 1, RESET_WIDTH, CONTROL_HEIGHT)) {
                 entry.reset();
                 if (entry.type == EntryType.KEYBIND) {
                     VanillaKeyMappings.resetKey(entry.key);
@@ -236,23 +236,41 @@ public class GuiBuilderHelperSettings extends GuiBase {
         int x = layout.x();
 
         for (Category tab : Category.values()) {
-            int width = this.getTabWidth(tab);
+            int width = this.getTabWidth(layout);
             boolean selected = tab == this.category;
             boolean pressed = this.isLeftMouseDown() && this.isInside(mouseX, mouseY, x, layout.tabY(), width, TAB_HEIGHT);
             double hover = this.easeOutCubic(this.tabHover[tab.ordinal()]);
-            int fill = this.withAlpha(this.blendRgb(0x111719, 0x273033, Math.max(hover, selected ? 0.7 : 0.0)), selected ? 0.76 : 0.58 + hover * 0.16);
+            int fill = selected
+                    ? 0x7A0B1012
+                    : this.withAlpha(this.blendRgb(0x111719, 0x273033, Math.max(hover, 0.0)), 0.58 + hover * 0.16);
 
             guiGraphics.fill(x, layout.tabY(), x + width, layout.tabY() + TAB_HEIGHT, fill);
             this.drawRectFrame(guiGraphics, x, layout.tabY(), width, TAB_HEIGHT, selected ? 0.62 : 0.26 + hover * 0.24);
+            if (selected) {
+                guiGraphics.fill(x + 1, layout.tabY() + TAB_HEIGHT - 1, x + width - 1, layout.tabY() + TAB_HEIGHT + 1, 0x7A0B1012);
+            }
             this.drawSegmentIndicator(guiGraphics, x + 3, layout.tabY() + TAB_HEIGHT - 6, width - 6, this.tabIndicator[tab.ordinal()], pressed ? IndicatorState.PRESSED : selected ? IndicatorState.SELECTED : hover > 0.02 ? IndicatorState.HOVERED : IndicatorState.NORMAL);
-            this.drawText(guiGraphics, tab.title(), x + 3, layout.tabY() + 3, selected || hover > 0.02 ? 0xFFFFF1B0 : TEXT);
+            String tabText = this.fitText(tab.title(), Math.max(1, width - 6));
+            this.drawCenteredText(guiGraphics, tabText, x, layout.tabY(), width, TAB_HEIGHT,
+                    selected || hover > 0.02 ? 0xFFFFF1B0 : TEXT);
             x += width + TAB_GAP;
         }
     }
 
     private void drawListPanel(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
-        guiGraphics.fill(layout.x(), layout.listY(), layout.x() + layout.width(), layout.listY() + layout.listHeight(), 0x7C0B1012);
-        this.drawCornerFrame(guiGraphics, layout.x(), layout.listY(), layout.width(), layout.listHeight(), 7, 0.42);
+        int x = layout.x();
+        int y = layout.tabY();
+        int width = layout.width();
+        int height = layout.listHeight() + TAB_HEIGHT;
+        int bottom = y + height;
+
+        // Match the random placement settings: tabs sit on a single framed content surface.
+        guiGraphics.fill(x, y, x + width, bottom, 0x7A0B1012);
+        guiGraphics.fill(x, y, x + width, y + 1, 0xBFFFFFFF);
+        guiGraphics.fill(x, y, x + 1, bottom, 0x66FFFFFF);
+        guiGraphics.fill(x + width - 1, y, x + width, bottom, 0x66FFFFFF);
+        guiGraphics.fill(x, bottom - 1, x + width, bottom, 0x66FFFFFF);
+        guiGraphics.fill(x, layout.listY(), x + width, layout.listY() + 1, 0x553D5558);
 
         for (RowPlacement row : this.getVisibleRows(layout)) {
             this.drawRow(guiGraphics, mouseX, mouseY, row);
@@ -266,9 +284,10 @@ public class GuiBuilderHelperSettings extends GuiBase {
             return;
         }
 
-        int y = layout.listY() + layout.listHeight() - 28;
-        this.drawText(guiGraphics, Lang.tr("iterablock.gui.settings.note.litematic_path.absolute"), layout.x() + 16, y, MUTED);
-        this.drawText(guiGraphics, Lang.tr("iterablock.gui.settings.note.litematic_path.default"), layout.x() + 16, y + 12, MUTED);
+        int y = layout.listY() + layout.listHeight() - 24;
+        int noteWidth = Math.max(1, layout.width() - 24);
+        this.drawText(guiGraphics, this.fitText(Lang.tr("iterablock.gui.settings.note.litematic_path.absolute"), noteWidth), layout.x() + 12, y, MUTED);
+        this.drawText(guiGraphics, this.fitText(Lang.tr("iterablock.gui.settings.note.litematic_path.default"), noteWidth), layout.x() + 12, y + 10, MUTED);
     }
 
     private void drawBackButton(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
@@ -279,8 +298,7 @@ public class GuiBuilderHelperSettings extends GuiBase {
 
         this.drawSimpleButtonBox(guiGraphics, x, y, BACK_BUTTON_WIDTH, BACK_BUTTON_HEIGHT, hover);
         String backText = Lang.tr("iterablock.gui.button.back");
-        int backTextX = x + Math.max(2, (BACK_BUTTON_WIDTH - this.getScaledStringWidth(backText)) / 2);
-        this.drawText(guiGraphics, backText, backTextX, y + 5, 0xFFFFFFFF);
+        this.drawCenteredText(guiGraphics, backText, x, y, BACK_BUTTON_WIDTH, BACK_BUTTON_HEIGHT, 0xFFFFFFFF);
     }
 
     private void drawRow(GuiGraphics guiGraphics, int mouseX, int mouseY, RowPlacement row) {
@@ -291,19 +309,18 @@ public class GuiBuilderHelperSettings extends GuiBase {
         int valueX = row.valueX() + (int) Math.round(valueHoverEase * 3.0);
         int valueTextColor = entry.type == EntryType.BOOLEAN ? (entry.booleanValue() ? GREEN : RED) : TEXT;
 
-        guiGraphics.fill(row.x(), y, row.x() + row.width(), y + ROW_HEIGHT, 0x33151A1D);
-        this.drawRectFrame(guiGraphics, row.x(), y, row.width(), ROW_HEIGHT, 0.24);
-        this.drawText(guiGraphics, entry.label(), row.x() + 10, y + 8, TEXT);
+        int labelWidth = Math.max(28, row.valueX() - row.x() - 6);
+        this.drawSimpleButtonBox(guiGraphics, row.x(), y + 1, labelWidth, CONTROL_HEIGHT, 0.0);
+        this.drawCenteredText(guiGraphics, this.fitText(entry.label(), labelWidth - 8), row.x(), y + 1, labelWidth, CONTROL_HEIGHT, TEXT);
 
-        this.drawSimpleButtonBox(guiGraphics, valueX, y + 3, row.valueWidth(), 16, valueHoverEase);
-        String valueText = entry.displayValue(this.editingEntry == entry, this.listeningKeyEntry == entry);
-        int valueTextX = valueX + Math.max(4, (row.valueWidth() - this.getScaledStringWidth(valueText)) / 2);
-        this.drawText(guiGraphics, valueText, valueTextX, y + 8, valueTextColor);
+        this.drawSimpleButtonBox(guiGraphics, valueX, y + 1, row.valueWidth(), CONTROL_HEIGHT, valueHoverEase);
+        String valueText = this.fitText(entry.displayValue(this.editingEntry == entry, this.listeningKeyEntry == entry),
+                Math.max(1, row.valueWidth() - 8));
+        this.drawCenteredText(guiGraphics, valueText, valueX, y + 1, row.valueWidth(), CONTROL_HEIGHT, valueTextColor);
 
-        this.drawSimpleButtonBox(guiGraphics, row.resetX(), y + 3, RESET_WIDTH, 16, resetHoverEase);
+        this.drawSimpleButtonBox(guiGraphics, row.resetX(), y + 1, RESET_WIDTH, CONTROL_HEIGHT, resetHoverEase);
         String resetText = Lang.tr("iterablock.gui.settings.reset");
-        int resetTextX = row.resetX() + Math.max(2, (RESET_WIDTH - this.getScaledStringWidth(resetText)) / 2);
-        this.drawText(guiGraphics, resetText, resetTextX, y + 8, 0xFFFFFFFF);
+        this.drawCenteredText(guiGraphics, resetText, row.resetX(), y + 1, RESET_WIDTH, CONTROL_HEIGHT, 0xFFFFFFFF);
     }
 
     private void drawSimpleButtonBox(GuiGraphics guiGraphics, int x, int y, int width, int height, double hover) {
@@ -507,7 +524,7 @@ public class GuiBuilderHelperSettings extends GuiBase {
         int tabX = layout.x();
 
         for (Category tab : Category.values()) {
-            int width = this.getTabWidth(tab);
+            int width = this.getTabWidth(layout);
             double target = this.isInside(mouseX, mouseY, tabX, layout.tabY(), width, TAB_HEIGHT) ? 1.0 : 0.0;
             this.tabHover[tab.ordinal()] = this.approach(this.tabHover[tab.ordinal()], target, HOVER_SPEED, deltaTime);
             this.updateIndicatorPid(this.tabIndicator[tab.ordinal()], this.tabIndicatorVelocity[tab.ordinal()], tab == this.category ? IndicatorState.SELECTED : target > 0.0 ? IndicatorState.HOVERED : IndicatorState.NORMAL, deltaTime);
@@ -521,8 +538,8 @@ public class GuiBuilderHelperSettings extends GuiBase {
 
         for (RowPlacement row : this.getVisibleRows(layout)) {
             ConfigEntry entry = row.entry();
-            double valueTarget = this.isInside(mouseX, mouseY, row.valueX(), row.y() + 3, row.valueWidth(), 16) ? 1.0 : 0.0;
-            double resetTarget = this.isInside(mouseX, mouseY, row.resetX(), row.y() + 3, RESET_WIDTH, 16) ? 1.0 : 0.0;
+            double valueTarget = this.isInside(mouseX, mouseY, row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT) ? 1.0 : 0.0;
+            double resetTarget = this.isInside(mouseX, mouseY, row.resetX(), row.y() + 1, RESET_WIDTH, CONTROL_HEIGHT) ? 1.0 : 0.0;
             this.valueHover[entry.index] = this.approach(this.valueHover[entry.index], valueTarget, HOVER_SPEED, deltaTime);
             this.resetHover[entry.index] = this.approach(this.resetHover[entry.index], resetTarget, HOVER_SPEED, deltaTime);
         }
@@ -560,20 +577,24 @@ public class GuiBuilderHelperSettings extends GuiBase {
         List<ConfigEntry> categoryEntries = this.getEntriesForCategory();
         List<RowPlacement> rows = new ArrayList<>();
         int visibleRows = this.getVisibleRowCount(layout);
-        int resetX = layout.x() + layout.width() - RESET_WIDTH - 12;
+        int resetX = layout.x() + layout.width() - RESET_WIDTH - 8;
         int labelWidth = 0;
 
         for (ConfigEntry entry : categoryEntries) {
             labelWidth = Math.max(labelWidth, this.getScaledStringWidth(entry.label()));
         }
 
-        int labelToValue = Math.max(86, Math.min(210, labelWidth + 24));
-        int valueX = Math.min(layout.x() + labelToValue, resetX - VALUE_WIDTH - 12);
-        int rowY = layout.listY() + 8;
+        int rowX = layout.x() + 6;
+        int minimumValueWidth = 54;
+        int labelToValue = Math.max(70, Math.min(102, labelWidth + 14));
+        int valueX = Math.min(layout.x() + labelToValue, resetX - minimumValueWidth - 6);
+        valueX = Math.max(rowX + 24, valueX);
+        int valueWidth = Math.max(minimumValueWidth, resetX - valueX - 6);
+        int rowY = layout.listY() + 6;
 
         for (int i = 0; i < visibleRows && i + this.scrollOffset < categoryEntries.size(); i++) {
             ConfigEntry entry = categoryEntries.get(i + this.scrollOffset);
-            rows.add(new RowPlacement(entry, layout.x() + 8, rowY, layout.width() - 18, valueX, Math.max(80, resetX - valueX - 10), resetX));
+            rows.add(new RowPlacement(entry, rowX, rowY, layout.width() - 12, valueX, valueWidth, resetX));
             rowY += ROW_HEIGHT + ROW_GAP;
         }
 
@@ -593,15 +614,16 @@ public class GuiBuilderHelperSettings extends GuiBase {
     }
 
     private int getVisibleRowCount(Layout layout) {
-        return Math.max(1, (layout.listHeight() - 8) / (ROW_HEIGHT + ROW_GAP));
+        return Math.max(1, (layout.listHeight() - 12 + ROW_GAP) / (ROW_HEIGHT + ROW_GAP));
     }
 
     private int getMaxScrollOffset(Layout layout) {
         return Math.max(0, this.getEntriesForCategory().size() - this.getVisibleRowCount(layout));
     }
 
-    private int getTabWidth(Category tab) {
-        return this.getScaledStringWidth(tab.title()) + 6;
+    private int getTabWidth(Layout layout) {
+        int totalGap = TAB_GAP * (Category.values().length - 1);
+        return Math.max(1, (layout.width() - totalGap) / Category.values().length);
     }
 
     private void drawText(GuiGraphics guiGraphics, String text, int x, int y, int color) {
@@ -623,15 +645,67 @@ public class GuiBuilderHelperSettings extends GuiBase {
         return (int) Math.ceil(this.getStringWidth(text) * TEXT_SCALE);
     }
 
+    private void drawCenteredText(GuiGraphics guiGraphics, String text, int x, int y, int width, int height, int color) {
+        int textX = x + Math.max(0, (width - this.getScaledStringWidth(text)) / 2);
+        int textY = y + Math.max(0, (int) Math.round((height - 8.0 * TEXT_SCALE) / 2.0));
+        this.drawText(guiGraphics, text, textX, textY, color);
+    }
+
+    private void drawFittedLeftCenteredText(GuiGraphics guiGraphics, String text, int x, int y, int maxWidth, int height, int color) {
+        int textY = y + Math.max(0, (int) Math.round((height - 8.0 * TEXT_SCALE) / 2.0));
+        this.drawText(guiGraphics, this.fitText(text, maxWidth), x, textY, color);
+    }
+
+    private String fitText(String text, int maxWidth) {
+        if (this.getScaledStringWidth(text) <= maxWidth) {
+            return text;
+        }
+
+        String suffix = "...";
+        if (this.getScaledStringWidth(suffix) > maxWidth) {
+            return "";
+        }
+
+        String result = text;
+        while (!result.isEmpty() && this.getScaledStringWidth(result + suffix) > maxWidth) {
+            result = result.substring(0, result.length() - 1);
+        }
+
+        return result + suffix;
+    }
+
     private Layout createLayout() {
-        int x = SAFE_MARGIN;
-        int y = TOP_Y;
-        int width = Math.max(260, this.width - SAFE_MARGIN * 2);
-        int listY = y + 29;
-        int backY = this.height - SAFE_MARGIN - BACK_BUTTON_HEIGHT;
+        int horizontalMargin = Math.min(SAFE_MARGIN, Math.max(4, (this.width - 220) / 2));
+        int availableWidth = Math.max(1, this.width - horizontalMargin * 2);
+        int width = Math.min(availableWidth, PANEL_MAX_WIDTH);
+        int x = (this.width - width) / 2;
+        int titleY = Math.max(10, SAFE_MARGIN);
+        int tabY = titleY + 20;
+        int listY = tabY + TAB_HEIGHT;
+        int maxRows = this.getLargestCategorySize();
+        int desiredListHeight = 12 + maxRows * ROW_HEIGHT + Math.max(0, maxRows - 1) * ROW_GAP;
+        int maximumListHeight = Math.max(ROW_HEIGHT + 12,
+                this.height - SAFE_MARGIN - BACK_BUTTON_HEIGHT - listY - 10);
+        int listHeight = Math.min(desiredListHeight, maximumListHeight);
+        int backY = Math.min(this.height - SAFE_MARGIN - BACK_BUTTON_HEIGHT, listY + listHeight + 8);
         int backX = x + width - BACK_BUTTON_WIDTH;
-        int listHeight = Math.max(80, backY - listY - 8);
-        return new Layout(x, y - 16, y, listY, width, listHeight, backX, backY);
+        return new Layout(x, titleY, tabY, listY, width, listHeight, backX, backY);
+    }
+
+    private int getLargestCategorySize() {
+        int largest = 1;
+
+        for (Category candidate : Category.values()) {
+            int count = 0;
+            for (ConfigEntry entry : this.entries) {
+                if (entry.category == candidate) {
+                    count++;
+                }
+            }
+            largest = Math.max(largest, count);
+        }
+
+        return largest;
     }
 
     private void createEntries() {

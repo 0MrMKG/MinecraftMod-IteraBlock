@@ -259,8 +259,8 @@ public final class SymmetryPlacementState {
         int centerOffset = parity == Parity.EVEN ? 1 : 0;
         int mirrored = centerValue * 2 + centerOffset - value;
 
-        if (parity == Parity.ODD && value == centerValue) {
-            return new int[] {value, value + 1};
+        if (mirrored == value) {
+            return new int[] {value};
         }
 
         return new int[] {value, mirrored};

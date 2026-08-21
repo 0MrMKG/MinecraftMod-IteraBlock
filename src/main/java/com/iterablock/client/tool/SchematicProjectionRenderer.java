@@ -33,11 +33,8 @@ public class SchematicProjectionRenderer {
     private static final float PROJECTION_MODEL_SCALE = 1.003F;
     private static final int BOUNDING_BOX_COLOR = 0xD08AE8FF;
     private static final int TARGET_LINE_COLOR = 0xF000FF66;
-    private static final int AREA_SELECTION_LINE_COLOR = 0xF4D6FFF0;
-    private static final int AREA_FIRST_POINT_LINE_COLOR = 0xFFEAFBFF;
-    private static final int AREA_FIRST_POINT_ACTIVE_LINE_COLOR = 0xFFBFE3F6;
-    private static final int AREA_SECOND_POINT_LINE_COLOR = 0xFFFFF1D6;
-    private static final int AREA_SECOND_POINT_ACTIVE_LINE_COLOR = 0xFFF6D6A8;
+    private static final int PLACEMENT_ADJUSTMENT_POINT_FILL_COLOR = 0x8000FF00;
+    private static final int PLACEMENT_ADJUSTMENT_POINT_LINE_COLOR = 0xFF00FF00;
     private static final int BEZIER_CURVE_LINE_COLOR = 0xE0F3C6D3;
     private static final int BEZIER_POINT_LINE_COLOR = 0xF0F6D6A8;
     private static final int BEZIER_PREVIOUS_POINT_LINE_COLOR = 0xF0FF4A4A;
@@ -59,6 +56,7 @@ public class SchematicProjectionRenderer {
     private ProjectionKey cachedProjectionKey;
     private List<RenderBlock> cachedProjectionBlocks = java.util.List.of();
     private List<Bounds> cachedProjectionBounds = java.util.List.of();
+    private ProjectionSnapshot cachedProjectionSnapshot = new ProjectionSnapshot(java.util.List.of(), java.util.List.of());
 
     private SchematicProjectionRenderer() {
     }
@@ -83,6 +81,7 @@ public class SchematicProjectionRenderer {
         this.cachedProjectionKey = null;
         this.cachedProjectionBlocks = java.util.List.of();
         this.cachedProjectionBounds = java.util.List.of();
+        this.cachedProjectionSnapshot = new ProjectionSnapshot(this.cachedProjectionBlocks, this.cachedProjectionBounds);
     }
 
     @SubscribeEvent
@@ -109,7 +108,7 @@ public class SchematicProjectionRenderer {
             ToolState.updateSchematicPlacementPreview(minecraft);
         }
 
-        this.renderAreaSelection(poseStack);
+        AreaSelectionRenderer.getInstance().render(poseStack);
         this.renderSymmetryPlacement(poseStack);
         this.renderActivePlacement(minecraft, poseStack);
         this.renderPlacementTarget(poseStack);
@@ -151,9 +150,6 @@ public class SchematicProjectionRenderer {
     }
 
     private ProjectionSnapshot getProjectionSnapshot(Minecraft minecraft, BlockPos origin, LoadedLitematicManager.Entry entry) {
-        BlockPos arrayStep = this.getArrayStep(entry);
-        List<BlockPos> offsets = this.getPlacementOffsets(arrayStep);
-        int realRenderLimit = this.getRealRenderLimit(offsets.size());
         ProjectionKey key = new ProjectionKey(
                 entry,
                 origin,
@@ -171,29 +167,29 @@ public class SchematicProjectionRenderer {
                 SchematicPlacementState.getPlacementOffset().getX(),
                 SchematicPlacementState.getPlacementOffset().getY(),
                 SchematicPlacementState.getPlacementOffset().getZ(),
-                RingPlacementState.getCount(),
-                RingPlacementState.getRadius(),
                 BuilderHelperClientConfig.getLinearArrayRenderLimit(),
                 BuilderHelperClientConfig.getVolumeArrayRenderLimit()
         );
 
         if (key.equals(this.cachedProjectionKey)) {
-            return new ProjectionSnapshot(this.cachedProjectionBlocks, this.cachedProjectionBounds);
+            return this.cachedProjectionSnapshot;
         }
+
+        BlockPos arrayStep = this.getArrayStep(entry);
+        List<BlockPos> offsets = this.getPlacementOffsets(arrayStep);
+        int realRenderLimit = this.getRealRenderLimit(offsets.size());
 
         List<RenderBlock> blocks = new java.util.ArrayList<>();
         List<Bounds> bounds = new java.util.ArrayList<>();
 
-        boolean ringPlacement = ToolState.getMode() == ToolMode.RING_PLACEMENT;
-
         for (int copy = 0; copy < realRenderLimit; copy++) {
             BlockPos copyOrigin = origin.offset(offsets.get(copy));
-            int rotationSteps = ringPlacement ? RingPlacementState.getRotationSteps(copy) : SchematicPlacementState.getRotationSteps();
-            this.collectPlacementBlocks(minecraft, copyOrigin, entry.info(), blocks, rotationSteps, SchematicPlacementState.getMirrorAxis(), !ringPlacement);
+            int rotationSteps = SchematicPlacementState.getRotationSteps();
+            this.collectPlacementBlocks(minecraft, copyOrigin, entry.info(), blocks, rotationSteps, SchematicPlacementState.getMirrorAxis(), true);
         }
 
         for (int copy = 0; copy < offsets.size(); copy++) {
-            int rotationSteps = ringPlacement ? RingPlacementState.getRotationSteps(copy) : SchematicPlacementState.getRotationSteps();
+            int rotationSteps = SchematicPlacementState.getRotationSteps();
             Bounds copyBounds = this.getPlacementBounds(origin.offset(offsets.get(copy)), entry, rotationSteps);
 
             if (copyBounds != null) {
@@ -204,7 +200,8 @@ public class SchematicProjectionRenderer {
         this.cachedProjectionKey = key;
         this.cachedProjectionBlocks = List.copyOf(blocks);
         this.cachedProjectionBounds = List.copyOf(bounds);
-        return new ProjectionSnapshot(this.cachedProjectionBlocks, this.cachedProjectionBounds);
+        this.cachedProjectionSnapshot = new ProjectionSnapshot(this.cachedProjectionBlocks, this.cachedProjectionBounds);
+        return this.cachedProjectionSnapshot;
     }
 
     private List<BlockPos> getPlacementOffsets(BlockPos arrayStep) {
@@ -223,10 +220,6 @@ public class SchematicProjectionRenderer {
         if (ToolState.getMode() == ToolMode.ARRAY_PLACEMENT
                 && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.VOLUME) {
             return SchematicPlacementState.getVolumeArrayOffsets(arrayStep);
-        }
-
-        if (ToolState.getMode() == ToolMode.RING_PLACEMENT) {
-            return RingPlacementState.getOffsets();
         }
 
         return java.util.List.of(BlockPos.ZERO);
@@ -260,10 +253,6 @@ public class SchematicProjectionRenderer {
     }
 
     private int getRealRenderLimit(int copies) {
-        if (ToolState.getMode() == ToolMode.RING_PLACEMENT) {
-            return copies;
-        }
-
         if (ToolState.getMode() == ToolMode.ARRAY_PLACEMENT
                 && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.LINEAR) {
             return Math.min(copies, BuilderHelperClientConfig.getLinearArrayRenderLimit());
@@ -421,47 +410,11 @@ public class SchematicProjectionRenderer {
             return;
         }
 
-        this.renderFilledBox(poseStack, target.getX(), target.getY(), target.getZ(), target.getX() + 1, target.getY() + 1, target.getZ() + 1, this.getConfiguredFillColor());
-        this.renderLineBox(poseStack, target.getX(), target.getY(), target.getZ(), target.getX() + 1, target.getY() + 1, target.getZ() + 1, TARGET_LINE_COLOR);
-    }
-
-    private void renderAreaSelection(PoseStack poseStack) {
-        if (ToolState.getMode() != ToolMode.AREA_COPY_PASTE && !ToolState.isRandomAreaMode()) {
-            return;
-        }
-
-        BlockPos first = AreaSelectionState.getFirstCorner();
-        BlockPos second = AreaSelectionState.getSecondCorner();
-
-        if (first != null) {
-            boolean active = AreaSelectionState.getActiveCorner() == AreaSelectionState.Corner.FIRST;
-            int lineColor = active ? AREA_FIRST_POINT_ACTIVE_LINE_COLOR : AREA_FIRST_POINT_LINE_COLOR;
-            this.renderAreaPointBox(poseStack, first, lineColor);
-        }
-
-        if (second != null) {
-            boolean active = AreaSelectionState.getActiveCorner() == AreaSelectionState.Corner.SECOND;
-            int lineColor = active ? AREA_SECOND_POINT_ACTIVE_LINE_COLOR : AREA_SECOND_POINT_LINE_COLOR;
-            this.renderAreaPointBox(poseStack, second, lineColor);
-        }
-
-        if (first == null || second == null) {
-            return;
-        }
-
-        int minX = Math.min(first.getX(), second.getX());
-        int minY = Math.min(first.getY(), second.getY());
-        int minZ = Math.min(first.getZ(), second.getZ());
-        int maxX = Math.max(first.getX(), second.getX()) + 1;
-        int maxY = Math.max(first.getY(), second.getY()) + 1;
-        int maxZ = Math.max(first.getZ(), second.getZ()) + 1;
-        this.renderFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, this.getConfiguredFillColor());
-        this.renderLineBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, AREA_SELECTION_LINE_COLOR);
-    }
-
-    private void renderAreaPointBox(PoseStack poseStack, BlockPos point, int lineColor) {
-        this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, this.getConfiguredFillColor());
-        this.renderLineBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, lineColor);
+        boolean adjusting = SchematicPlacementState.isPlacementPointAdjusting();
+        int fillColor = adjusting ? PLACEMENT_ADJUSTMENT_POINT_FILL_COLOR : this.getConfiguredFillColor();
+        int lineColor = adjusting ? PLACEMENT_ADJUSTMENT_POINT_LINE_COLOR : TARGET_LINE_COLOR;
+        this.renderFilledBox(poseStack, target.getX(), target.getY(), target.getZ(), target.getX() + 1, target.getY() + 1, target.getZ() + 1, fillColor);
+        this.renderLineBox(poseStack, target.getX(), target.getY(), target.getZ(), target.getX() + 1, target.getY() + 1, target.getZ() + 1, lineColor);
     }
 
     private int getConfiguredFillColor() {
@@ -652,8 +605,6 @@ public class SchematicProjectionRenderer {
             int placementOffsetX,
             int placementOffsetY,
             int placementOffsetZ,
-            int ringCount,
-            int ringRadius,
             int linearRenderLimit,
             int volumeRenderLimit) {
     }

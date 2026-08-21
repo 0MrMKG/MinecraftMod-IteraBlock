@@ -1,6 +1,5 @@
 package com.iterablock.client.tool;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import com.iterablock.client.Lang;
@@ -8,19 +7,18 @@ import com.iterablock.client.config.BuilderHelperClientConfig;
 import com.iterablock.client.template.LoadedLitematicManager;
 
 import fi.dy.masa.malilib.interfaces.IRenderer;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 
 public class ToolHudRenderer implements IRenderer {
     private static final ToolHudRenderer INSTANCE = new ToolHudRenderer();
     private static final float HUD_SCALE = 0.75F;
     private HudCacheKey cachedHudKey;
     private HudLayout cachedHudLayout;
-    private BezierSampleCacheKey cachedBezierSampleKey;
-    private String cachedBezierSampleText = "";
-    private int cachedBezierSampleWidth;
 
     private ToolHudRenderer() {
     }
@@ -62,10 +60,6 @@ public class ToolHudRenderer implements IRenderer {
         }
 
         guiGraphics.pose().popPose();
-
-        if (mode == ToolMode.BEZIER_CURVE_GENERATION) {
-            this.drawBezierSampleCount(guiGraphics, font);
-        }
     }
 
     private HudLayout getHudLayout(Minecraft minecraft, Font font, ToolMode mode) {
@@ -75,39 +69,18 @@ public class ToolHudRenderer implements IRenderer {
             return this.cachedHudLayout;
         }
 
-        String title = Lang.tr("iterablock.tool.title");
-        String plainModeText = Lang.tr("iterablock.tool.mode", mode.getDisplayName());
-        String modeText = Lang.tr("iterablock.tool.mode_numbered", formatModeNumber(mode.ordinal() + 1), mode.getDisplayName());
-        String litematicText = ClientToolState.currentLitematic == null ? Lang.tr("iterablock.tool.litematic_none") : Lang.tr("iterablock.tool.litematic", ClientToolState.currentLitematic.displayName());
-        String bezierPlacementModeText = getBezierPlacementModeText(mode);
-        String arrayText = getArrayText(minecraft, mode);
-        String overlapText = getOverlapText(minecraft, mode);
-        String actionText = ToolState.getLastAction();
-        boolean showAction = actionText != null
-                && !actionText.isBlank()
-                && !actionText.equals(modeText)
-                && !actionText.equals(plainModeText)
-                && !actionText.equals(arrayText);
-        List<HudLine> lines = new ArrayList<>();
-        lines.add(new HudLine(title, 0xD6F4FF));
-        lines.add(new HudLine(modeText, getModeTextColor(mode)));
-        lines.add(new HudLine(litematicText, 0xFFFFFF));
-
-        if (!bezierPlacementModeText.isEmpty()) {
-            lines.add(new HudLine(bezierPlacementModeText, 0xFFF3EECF));
-        }
-
-        if (!arrayText.isEmpty()) {
-            lines.add(new HudLine(arrayText, 0xD6F4FF));
-        }
-
-        if (!overlapText.isEmpty()) {
-            lines.add(new HudLine(overlapText, 0xE8F6FF));
-        }
-
-        if (showAction) {
-            lines.add(new HudLine(actionText, 0xA7D9E6));
-        }
+        Component modeText = Component.translatable("iterablock.tool.mode_numbered",
+                value(formatModeNumber(mode.ordinal() + 1)), value(mode.getDisplayName()));
+        Component litematicText = Component.translatable("iterablock.tool.litematic",
+                value(ClientToolState.currentLitematic == null
+                        ? Lang.tr("iterablock.tool.litematic_none_value")
+                        : ClientToolState.currentLitematic.displayName()));
+        List<HudLine> lines = List.of(
+                new HudLine(Component.literal("IteraBlock"), 0xD6F4FF),
+                new HudLine(modeText, getModeTextColor(mode)),
+                new HudLine(litematicText, 0xFFFFFF),
+                new HudLine(getInfoLine(minecraft, mode), 0xD6F4FF)
+        );
 
         int width = 0;
         for (HudLine line : lines) {
@@ -128,23 +101,23 @@ public class ToolHudRenderer implements IRenderer {
                 ToolState.getRandomPlacementMode(),
                 ToolState.isRandomAreaLocked(),
                 ClientToolState.currentLitematic,
-                ToolState.getLastActionCacheToken(),
                 lookAxis,
                 BuilderHelperClientConfig.isBezierPlaceNbtMode(),
+                BuilderHelperClientConfig.getBezierPlacementPrecision(),
+                BuilderHelperClientConfig.getBezierPlacementWidth(),
                 BezierCurveState.getPointCount(),
                 BezierCurveState.getRequiredPointCount(),
-                List.copyOf(BezierCurveState.getControlPoints()),
+                BezierCurveState.getRevision(),
                 BuilderHelperClientConfig.getRandomPlacementRadius(),
                 BuilderHelperClientConfig.getRandomPlacementHeightMin(),
                 BuilderHelperClientConfig.getRandomPlacementHeightMax(),
                 BuilderHelperClientConfig.getRandomPlacementCount(),
                 BuilderHelperClientConfig.getRandomPlacementRotationChance(),
-                RingPlacementState.getCount(),
-                RingPlacementState.getRadius(),
                 AreaSelectionState.getFirstCorner(),
                 AreaSelectionState.getSecondCorner(),
                 AreaSelectionState.getActiveCorner(),
                 SchematicPlacementState.hasPlacement(),
+                SchematicPlacementState.getOrigin(),
                 SchematicPlacementState.getLinearArrayAxisName(),
                 SchematicPlacementState.getLinearArrayCount(),
                 SchematicPlacementState.getVolumeArrayCount(SchematicPlacementState.Axis.X),
@@ -168,17 +141,6 @@ public class ToolHudRenderer implements IRenderer {
         );
     }
 
-    private static String getBezierPlacementModeText(ToolMode mode) {
-        if (mode != ToolMode.BEZIER_CURVE_GENERATION) {
-            return "";
-        }
-
-        String modeKey = BuilderHelperClientConfig.isBezierPlaceNbtMode()
-                ? "iterablock.tool.bezier.placement_mode.nbt"
-                : "iterablock.tool.bezier.placement_mode.block";
-        return Lang.tr("iterablock.tool.bezier.placement_mode", Lang.tr(modeKey));
-    }
-
     private static int getModeTextColor(ToolMode mode) {
         if (mode == ToolMode.SCHEMATIC_PLACEMENT) {
             return 0x9AF5B0;
@@ -187,7 +149,6 @@ public class ToolHudRenderer implements IRenderer {
         if (mode == ToolMode.ARRAY_PLACEMENT
                 || mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT
                 || mode == ToolMode.BEZIER_CURVE_GENERATION
-                || mode == ToolMode.RING_PLACEMENT
                 || mode == ToolMode.SYMMETRY_PLACEMENT) {
             return 0xFFE680;
         }
@@ -195,178 +156,142 @@ public class ToolHudRenderer implements IRenderer {
         return 0xFFFFFF;
     }
 
-    private void drawBezierSampleCount(GuiGraphics guiGraphics, Font font) {
-        BezierSampleCacheKey key = new BezierSampleCacheKey(
-                List.copyOf(BezierCurveState.getControlPoints()),
-                BezierCurveState.getRequiredPointCount(),
-                BuilderHelperClientConfig.getBezierPlacementPrecision()
-        );
-
-        if (!key.equals(this.cachedBezierSampleKey)) {
-            this.cachedBezierSampleKey = key;
-            this.cachedBezierSampleText = Lang.tr("iterablock.tool.bezier.sample_points", BezierCurveState.getSamplePointCount());
-            this.cachedBezierSampleWidth = font.width(this.cachedBezierSampleText);
-        }
-
-        String text = this.cachedBezierSampleText;
-        int scaledWidth = Math.round(guiGraphics.guiWidth() / HUD_SCALE);
-        int x = scaledWidth - this.cachedBezierSampleWidth - Math.round(8 / HUD_SCALE);
-        int y = Math.round(8 / HUD_SCALE);
-        int width = this.cachedBezierSampleWidth + 10;
-
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().scale(HUD_SCALE, HUD_SCALE, 1.0F);
-        guiGraphics.fill(x - 4, y - 4, x + width, y + 12, 0x8A071018);
-        guiGraphics.fill(x - 4, y - 4, x + width, y - 3, 0xB6F3C6D3);
-        guiGraphics.drawString(font, text, x, y, 0xFFF3EECF, true);
-        guiGraphics.pose().popPose();
-    }
-
-    private static String getArrayText(Minecraft minecraft, ToolMode mode) {
+    private static Component getInfoLine(Minecraft minecraft, ToolMode mode) {
         if (minecraft.player == null) {
-            return "";
+            return Component.translatable("iterablock.tool.action.ready");
         }
 
         if (mode == ToolMode.AREA_COPY_PASTE) {
             if (!AreaSelectionState.hasFirstCorner() && !AreaSelectionState.hasSecondCorner()) {
-                return Lang.tr("iterablock.tool.area.empty");
+                return Component.translatable("iterablock.tool.area.empty");
             }
 
             if (!AreaSelectionState.hasSelection()) {
-                return Lang.tr("iterablock.tool.area.partial", formatPos(AreaSelectionState.getFirstCorner()), formatPos(AreaSelectionState.getSecondCorner()));
+                return Component.translatable("iterablock.tool.area.partial",
+                        value(formatPos(AreaSelectionState.getFirstCorner())),
+                        value(formatPos(AreaSelectionState.getSecondCorner())));
             }
 
-            return Lang.tr("iterablock.tool.area.selection", formatPos(AreaSelectionState.getFirstCorner()), formatPos(AreaSelectionState.getSecondCorner()), AreaSelectionState.getSizeX(), AreaSelectionState.getSizeY(), AreaSelectionState.getSizeZ());
+            return Component.translatable("iterablock.tool.area.selection",
+                    value(formatPos(AreaSelectionState.getFirstCorner())),
+                    value(formatPos(AreaSelectionState.getSecondCorner())),
+                    value(AreaSelectionState.getSizeX()),
+                    value(AreaSelectionState.getSizeY()),
+                    value(AreaSelectionState.getSizeZ()));
         }
 
         if (mode == ToolMode.BEZIER_CURVE_GENERATION) {
-            return Lang.tr("iterablock.tool.bezier.points", BezierCurveState.getPointCount(), BezierCurveState.getRequiredPointCount());
+            String placementMode = Lang.tr(BuilderHelperClientConfig.isBezierPlaceNbtMode()
+                    ? "iterablock.tool.bezier.placement_mode.nbt"
+                    : "iterablock.tool.bezier.placement_mode.block");
+            return Component.translatable("iterablock.tool.hud.bezier",
+                    value(BezierCurveState.getPointCount()),
+                    value(BezierCurveState.getRequiredPointCount()),
+                    value(BezierCurveState.getSamplePointCount()),
+                    value(BuilderHelperClientConfig.getBezierPlacementPrecision()),
+                    value(BuilderHelperClientConfig.getBezierPlacementWidth()),
+                    value(placementMode));
         }
 
         if (mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT) {
             if (ToolState.getRandomPlacementMode() == ToolState.RandomPlacementMode.AREA_BLOCK) {
                 if (!AreaSelectionState.hasSelection()) {
-                    return Lang.tr("iterablock.tool.random.area.empty");
+                    return Component.translatable("iterablock.tool.random.area.empty");
                 }
 
-                return Lang.tr("iterablock.tool.random.area.selection",
-                        AreaSelectionState.getSizeX(),
-                        AreaSelectionState.getSizeY(),
-                        AreaSelectionState.getSizeZ(),
-                        Lang.tr(ToolState.isRandomAreaLocked()
+                return Component.translatable("iterablock.tool.random.area.selection",
+                        value(AreaSelectionState.getSizeX()),
+                        value(AreaSelectionState.getSizeY()),
+                        value(AreaSelectionState.getSizeZ()),
+                        value(Lang.tr(ToolState.isRandomAreaLocked()
                                 ? "iterablock.tool.random.area.locked"
-                                : "iterablock.tool.random.area.editing"));
+                                : "iterablock.tool.random.area.editing")));
             }
 
-            return Lang.tr("iterablock.tool.random.params",
-                    BuilderHelperClientConfig.getRandomPlacementRadius(),
-                    BuilderHelperClientConfig.getRandomPlacementHeightMin(),
-                    BuilderHelperClientConfig.getRandomPlacementHeightMax(),
-                    BuilderHelperClientConfig.getRandomPlacementCount(),
-                    BuilderHelperClientConfig.getRandomPlacementRotationChance());
-        }
-
-        if (mode == ToolMode.RING_PLACEMENT) {
-            if (!SchematicPlacementState.hasPlacement()) {
-                return "\u5706\u73af\uff1a\u53f3\u952e\u9009\u62e9\u5706\u5fc3\uff1b\u6570\u91cf " + RingPlacementState.getCount() + "\uff1b\u534a\u5f84 " + RingPlacementState.getRadius();
-            }
-
-            BlockPos center = SchematicPlacementState.getOrigin();
-            return "\u5706\u73af\uff1a\u4e2d\u5fc3 " + formatPos(center) + "\uff1b\u6570\u91cf " + RingPlacementState.getCount() + "\uff1b\u534a\u5f84 " + RingPlacementState.getRadius();
+            return Component.translatable("iterablock.tool.random.params",
+                    value(BuilderHelperClientConfig.getRandomPlacementRadius()),
+                    value(BuilderHelperClientConfig.getRandomPlacementHeightMin()),
+                    value(BuilderHelperClientConfig.getRandomPlacementHeightMax()),
+                    value(BuilderHelperClientConfig.getRandomPlacementCount()),
+                    value(BuilderHelperClientConfig.getRandomPlacementRotationChance()));
         }
 
         if (mode == ToolMode.SYMMETRY_PLACEMENT) {
             if (!SymmetryPlacementState.hasCenter()) {
-                return Lang.tr("iterablock.tool.symmetry.empty");
+                return Component.translatable("iterablock.tool.symmetry.empty");
             }
 
-            net.minecraft.core.BlockPos center = SymmetryPlacementState.getCenter();
-            return Lang.tr("iterablock.tool.symmetry.params",
-                    Lang.tr(SymmetryPlacementState.getKind().translationKey()),
-                    Lang.tr(SymmetryPlacementState.getParity().translationKey()),
-                    center.getX(),
-                    center.getY(),
-                    center.getZ(),
-                    SymmetryPlacementState.getRadius(),
-                    SymmetryPlacementState.getHeight(),
-                    Lang.tr(SymmetryPlacementState.isLocked() ? "iterablock.tool.symmetry.locked" : "iterablock.tool.symmetry.editing"),
-                    Lang.tr(SymmetryPlacementState.isEnabled() ? "iterablock.tool.symmetry.enabled" : "iterablock.tool.symmetry.paused"));
+            BlockPos center = SymmetryPlacementState.getCenter();
+            return Component.translatable("iterablock.tool.symmetry.params",
+                    value(Lang.tr(SymmetryPlacementState.getKind().translationKey())),
+                    value(Lang.tr(SymmetryPlacementState.getParity().translationKey())),
+                    value(center.getX()),
+                    value(center.getY()),
+                    value(center.getZ()),
+                    value(SymmetryPlacementState.getRadius()),
+                    value(SymmetryPlacementState.getHeight()),
+                    value(Lang.tr(SymmetryPlacementState.isLocked() ? "iterablock.tool.symmetry.locked" : "iterablock.tool.symmetry.editing")),
+                    value(Lang.tr(SymmetryPlacementState.isEnabled() ? "iterablock.tool.symmetry.enabled" : "iterablock.tool.symmetry.paused")));
         }
 
-        if (mode == ToolMode.SCHEMATIC_PLACEMENT && SchematicPlacementState.hasPlacement()) {
+        if (mode == ToolMode.SCHEMATIC_PLACEMENT) {
+            if (!SchematicPlacementState.hasPlacement()) {
+                return Component.translatable("iterablock.tool.schematic.empty");
+            }
+
             BlockPos offset = SchematicPlacementState.getPlacementOffset();
-            String state = SchematicPlacementState.isPlacementPointAdjusting() ? "\u5fae\u8c03\u4e2d" : "\u6b63\u5e38";
-            return "\u653e\u7f6e\u70b9\uff1a" + state + "\uff1bX " + offset.getX() + " / Y " + offset.getY() + " / Z " + offset.getZ();
+            String state = Lang.tr(SchematicPlacementState.isPlacementPointAdjusting()
+                    ? "iterablock.tool.schematic.adjusting"
+                    : "iterablock.tool.schematic.normal");
+            return Component.translatable("iterablock.tool.schematic.info",
+                    value(state), value(offset.getX()), value(offset.getY()), value(offset.getZ()));
         }
 
         if (mode == ToolMode.ARRAY_PLACEMENT
                 && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.LINEAR) {
             if (!SchematicPlacementState.hasPlacement()) {
-                return Lang.tr("iterablock.tool.array.mode.linear");
+                return Component.translatable("iterablock.tool.hud.array.linear.empty");
             }
 
             SchematicPlacementState.Axis lookAxis = SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
-            String axis = SchematicPlacementState.getLinearArrayAxisName();
+            String axisName = SchematicPlacementState.getLinearArrayAxisName();
+            SchematicPlacementState.Axis axis = "-".equals(axisName)
+                    ? lookAxis
+                    : SchematicPlacementState.Axis.valueOf(axisName);
             int count = SchematicPlacementState.getLinearArrayCount();
-            return Lang.tr("iterablock.tool.array.linear", formatAxisName(axis, lookAxis), count);
+            return Component.translatable("iterablock.tool.hud.array.linear",
+                    axis(axis, lookAxis), value(count), value(SchematicPlacementState.getOverlap(axis)));
         }
 
         if (mode == ToolMode.ARRAY_PLACEMENT
                 && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.VOLUME) {
             if (!SchematicPlacementState.hasPlacement()) {
-                return Lang.tr("iterablock.tool.array.mode.volume");
+                return Component.translatable("iterablock.tool.hud.array.volume.empty");
             }
 
             SchematicPlacementState.Axis lookAxis = SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
-            return Lang.tr("iterablock.tool.array.volume",
-                    formatArrayValue(SchematicPlacementState.Axis.X, lookAxis),
-                    formatArrayValue(SchematicPlacementState.Axis.Y, lookAxis),
-                    formatArrayValue(SchematicPlacementState.Axis.Z, lookAxis));
+            return Component.translatable("iterablock.tool.hud.array.volume",
+                    axis(SchematicPlacementState.Axis.X, lookAxis),
+                    value(SchematicPlacementState.getVolumeArrayCount(SchematicPlacementState.Axis.X)),
+                    value(SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.X)),
+                    axis(SchematicPlacementState.Axis.Y, lookAxis),
+                    value(SchematicPlacementState.getVolumeArrayCount(SchematicPlacementState.Axis.Y)),
+                    value(SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Y)),
+                    axis(SchematicPlacementState.Axis.Z, lookAxis),
+                    value(SchematicPlacementState.getVolumeArrayCount(SchematicPlacementState.Axis.Z)),
+                    value(SchematicPlacementState.getOverlap(SchematicPlacementState.Axis.Z)));
         }
 
-        return "";
+        return Component.translatable("iterablock.tool.action.ready");
     }
 
-    private static String getOverlapText(Minecraft minecraft, ToolMode mode) {
-        if (minecraft.player == null || !SchematicPlacementState.hasPlacement()) {
-            return "";
-        }
-
-        if (mode == ToolMode.ARRAY_PLACEMENT
-                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.LINEAR) {
-            SchematicPlacementState.Axis axis = SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
-            return Lang.tr("iterablock.tool.overlap.single", axis.name(), SchematicPlacementState.getOverlap(axis));
-        }
-
-        if (mode == ToolMode.ARRAY_PLACEMENT
-                && SchematicPlacementState.getArrayMode() == SchematicPlacementState.ArrayMode.VOLUME) {
-            SchematicPlacementState.Axis lookAxis = SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
-            return Lang.tr("iterablock.tool.overlap.all",
-                    formatAxisValue(SchematicPlacementState.Axis.X, lookAxis),
-                    formatAxisValue(SchematicPlacementState.Axis.Y, lookAxis),
-                    formatAxisValue(SchematicPlacementState.Axis.Z, lookAxis));
-        }
-
-        return "";
+    private static Component value(Object value) {
+        return Component.literal(String.valueOf(value));
     }
 
-    private static String formatAxisValue(SchematicPlacementState.Axis axis, SchematicPlacementState.Axis lookAxis) {
-        return formatAxisName(axis.name(), lookAxis) + ": " + SchematicPlacementState.getOverlap(axis);
-    }
-
-    private static String formatArrayValue(SchematicPlacementState.Axis axis, SchematicPlacementState.Axis lookAxis) {
-        return formatAxisName(axis.name(), lookAxis) + ": " + SchematicPlacementState.getVolumeArrayCount(axis);
-    }
-
-    private static String formatAxisName(String axis, SchematicPlacementState.Axis lookAxis) {
-        String name = switch (axis) {
-            case "X" -> "X\u8f74";
-            case "Y" -> "Y\u8f74";
-            case "Z" -> "Z\u8f74";
-            default -> axis;
-        };
-
-        return axis.equals(lookAxis.name()) ? "\u00A7a" + name + "\u00A7f" : name;
+    private static Component axis(SchematicPlacementState.Axis axis, SchematicPlacementState.Axis lookAxis) {
+        Component result = Component.translatable("iterablock.tool.axis." + axis.name().toLowerCase());
+        return axis == lookAxis ? result.copy().withStyle(ChatFormatting.GREEN) : result;
     }
 
     private static String formatModeNumber(int number) {
@@ -388,13 +313,10 @@ public class ToolHudRenderer implements IRenderer {
         return pos == null ? "-" : pos.getX() + "," + pos.getY() + "," + pos.getZ();
     }
 
-    private record HudLine(String text, int color) {
+    private record HudLine(Component text, int color) {
     }
 
     private record HudLayout(List<HudLine> lines, int width, int height) {
-    }
-
-    private record BezierSampleCacheKey(List<BlockPos> controlPoints, int requiredPoints, int precision) {
     }
 
     private record HudCacheKey(
@@ -403,23 +325,23 @@ public class ToolHudRenderer implements IRenderer {
             ToolState.RandomPlacementMode randomPlacementMode,
             boolean randomAreaLocked,
             LoadedLitematicManager.Entry litematic,
-            String lastAction,
             SchematicPlacementState.Axis lookAxis,
             boolean bezierPlaceNbtMode,
+            int bezierPrecision,
+            int bezierWidth,
             int bezierPointCount,
             int bezierRequiredPointCount,
-            List<BlockPos> bezierControlPoints,
+            int bezierRevision,
             int randomRadius,
             int randomHeightMin,
             int randomHeightMax,
             int randomCount,
             int randomRotationChance,
-            int ringCount,
-            int ringRadius,
             BlockPos areaFirstCorner,
             BlockPos areaSecondCorner,
             AreaSelectionState.Corner areaActiveCorner,
             boolean hasPlacement,
+            BlockPos placementOrigin,
             String linearAxis,
             int linearCount,
             int volumeX,

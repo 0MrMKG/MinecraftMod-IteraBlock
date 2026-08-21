@@ -8,7 +8,6 @@ public enum ToolMode {
     ARRAY_PLACEMENT("iterablock.tool.mode.array_placement", "iterablock.tool.mode.array_placement.description", true),
     RANDOM_SCHEMATIC_PLACEMENT("iterablock.tool.mode.random_schematic_placement", "iterablock.tool.mode.random_schematic_placement.description", true),
     BEZIER_CURVE_GENERATION("iterablock.tool.mode.bezier_curve_generation", "iterablock.tool.mode.bezier_curve_generation.description", false),
-    RING_PLACEMENT("iterablock.tool.mode.ring_placement", "iterablock.tool.mode.ring_placement.description", true, "\u5706\u73af\u653e\u7f6e\u6a21\u5f0f", "\u56f4\u7ed5\u5706\u5fc3\u5e73\u5747\u5206\u914d\u653e\u7f6e\u5f53\u524d\u539f\u7406\u56fe"),
     SYMMETRY_PLACEMENT("iterablock.tool.mode.symmetry_placement", "iterablock.tool.mode.symmetry_placement.description", false);
 
     private final String displayNameKey;

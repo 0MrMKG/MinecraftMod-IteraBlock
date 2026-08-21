@@ -22,10 +22,12 @@ public final class BuilderHelperClientConfig {
     public static final int DEFAULT_RANDOM_PLACEMENT_HEIGHT_MAX = 0;
     public static final int DEFAULT_RANDOM_PLACEMENT_COUNT = 8;
     public static final int DEFAULT_RANDOM_PLACEMENT_ROTATION_CHANCE = 100;
+    public static final int DEFAULT_RANDOM_AREA_REPLACE_CHANCE = 35;
+    public static final boolean DEFAULT_RANDOM_AREA_INCLUDE_AIR = true;
     public static final int DEFAULT_BEZIER_PLACEMENT_PRECISION = 8;
     public static final int DEFAULT_BEZIER_PLACEMENT_WIDTH = 1;
     public static final int DEFAULT_BEZIER_CONTROL_POINT_COUNT = 4;
-    public static final int DEFAULT_SELECTION_FILL_OPACITY = 12;
+    public static final int DEFAULT_SELECTION_FILL_OPACITY = 10;
     public static final int DEFAULT_RENDER_FILL_RED = 255;
     public static final int DEFAULT_RENDER_FILL_GREEN = 255;
     public static final int DEFAULT_RENDER_FILL_BLUE = 255;
@@ -45,6 +47,8 @@ public final class BuilderHelperClientConfig {
     private static final int MAX_RANDOM_PLACEMENT_COUNT = 4096;
     private static final int MIN_RANDOM_PLACEMENT_ROTATION_CHANCE = 0;
     private static final int MAX_RANDOM_PLACEMENT_ROTATION_CHANCE = 100;
+    private static final int MIN_RANDOM_AREA_REPLACE_CHANCE = 0;
+    private static final int MAX_RANDOM_AREA_REPLACE_CHANCE = 100;
     private static final int MIN_BEZIER_PLACEMENT_PRECISION = 1;
     private static final int MAX_BEZIER_PLACEMENT_PRECISION = 128;
     private static final int MIN_BEZIER_PLACEMENT_WIDTH = 1;
@@ -74,6 +78,8 @@ public final class BuilderHelperClientConfig {
     private static final String RANDOM_PLACEMENT_HEIGHT_MAX_KEY = "randomPlacementHeightMax";
     private static final String RANDOM_PLACEMENT_COUNT_KEY = "randomPlacementCount";
     private static final String RANDOM_PLACEMENT_ROTATION_CHANCE_KEY = "randomPlacementRotationChance";
+    private static final String RANDOM_AREA_REPLACE_CHANCE_KEY = "randomAreaReplaceChance";
+    private static final String RANDOM_AREA_INCLUDE_AIR_KEY = "randomAreaIncludeAir";
     private static final String BEZIER_PLACEMENT_PRECISION_KEY = "bezierPlacementPrecision";
     private static final String BEZIER_PLACEMENT_WIDTH_KEY = "bezierPlacementWidth";
     private static final String BEZIER_CONTROL_POINT_COUNT_KEY = "bezierControlPointCount";
@@ -120,6 +126,14 @@ public final class BuilderHelperClientConfig {
 
     public static int getRandomPlacementRotationChance() {
         return getIntValue(RANDOM_PLACEMENT_ROTATION_CHANCE_KEY, DEFAULT_RANDOM_PLACEMENT_ROTATION_CHANCE, MIN_RANDOM_PLACEMENT_ROTATION_CHANCE, MAX_RANDOM_PLACEMENT_ROTATION_CHANCE);
+    }
+
+    public static int getRandomAreaReplaceChance() {
+        return getIntValue(RANDOM_AREA_REPLACE_CHANCE_KEY, DEFAULT_RANDOM_AREA_REPLACE_CHANCE, MIN_RANDOM_AREA_REPLACE_CHANCE, MAX_RANDOM_AREA_REPLACE_CHANCE);
+    }
+
+    public static boolean isRandomAreaIncludeAir() {
+        return Boolean.parseBoolean(loadProperties().getProperty(RANDOM_AREA_INCLUDE_AIR_KEY, Boolean.toString(DEFAULT_RANDOM_AREA_INCLUDE_AIR)));
     }
 
     public static int getBezierPlacementPrecision() {
@@ -180,6 +194,16 @@ public final class BuilderHelperClientConfig {
 
     public static void setRandomPlacementRotationChance(int value) {
         setIntValue(RANDOM_PLACEMENT_ROTATION_CHANCE_KEY, value, MIN_RANDOM_PLACEMENT_ROTATION_CHANCE, MAX_RANDOM_PLACEMENT_ROTATION_CHANCE);
+    }
+
+    public static void setRandomAreaReplaceChance(int value) {
+        setIntValue(RANDOM_AREA_REPLACE_CHANCE_KEY, value, MIN_RANDOM_AREA_REPLACE_CHANCE, MAX_RANDOM_AREA_REPLACE_CHANCE);
+    }
+
+    public static void setRandomAreaIncludeAir(boolean value) {
+        Properties properties = loadProperties();
+        properties.setProperty(RANDOM_AREA_INCLUDE_AIR_KEY, Boolean.toString(value));
+        saveProperties(properties);
     }
 
     public static void setBezierPlacementPrecision(int value) {
