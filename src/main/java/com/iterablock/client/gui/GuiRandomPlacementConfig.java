@@ -2,6 +2,8 @@ package com.iterablock.client.gui;
 
 import com.iterablock.client.Lang;
 import com.iterablock.client.config.BuilderHelperClientConfig;
+import com.iterablock.client.gui.settings.GuiSettingsControls;
+import com.iterablock.client.gui.settings.SettingsMenuCommonRenderer;
 
 import fi.dy.masa.malilib.gui.GuiBase;
 import net.minecraft.client.gui.GuiGraphics;
@@ -12,27 +14,27 @@ public class GuiRandomPlacementConfig extends GuiBase {
     private static final int ROW_HEIGHT = 16;
     private static final int ROW_GAP = 2;
     private static final int TAB_HEIGHT = 18;
-    private static final int PREFERRED_TAB_WIDTH = 88;
     private static final int PREFERRED_LABEL_WIDTH = 100;
     private static final int PREFERRED_VALUE_WIDTH = 96;
-    private static final int SLIDER_LABEL_WIDTH = 24;
     private static final int CONTROL_HEIGHT = 14;
     private static final int STEPPER_BUTTON_WIDTH = 14;
     private static final int RESET_WIDTH = 42;
     private static final int BACK_WIDTH = 58;
     private static final int BACK_HEIGHT = 16;
     private static final double TEXT_SCALE = 0.52;
-    private static final int TITLE_COLOR = 0xFFF3EECF;
+    private static final double HOVER_SPEED = 8.0;
     private static final int TEXT_COLOR = 0xFFDDE8E8;
-    private static final int MUTED_COLOR = 0xFF91A0A3;
-    private static final int FRAME_RGB = 0xF4F7F7;
 
     private final boolean returnToMainMenu;
+    private final double[] tabHover = new double[RandomConfigTab.values().length];
+    private final double[][] tabIndicator = new double[RandomConfigTab.values().length][SettingsMenuCommonRenderer.INDICATOR_SEGMENTS];
+    private final double[][] tabIndicatorVelocity = new double[RandomConfigTab.values().length][SettingsMenuCommonRenderer.INDICATOR_SEGMENTS];
     private Field editingField;
     private String editingValue = "";
     private boolean draggingRotationSlider;
     private boolean draggingBlockReplaceSlider;
-    private RandomConfigTab selectedTab = RandomConfigTab.RANDOM_NBT;
+    private RandomConfigTab selectedTab = RandomConfigTab.RANDOM_BLOCK;
+    private long lastFrameNanos;
 
     public GuiRandomPlacementConfig() {
         this(false);
@@ -50,7 +52,7 @@ public class GuiRandomPlacementConfig extends GuiBase {
 
     @Override
     protected void drawScreenBackground(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        guiGraphics.fill(0, 0, this.width, this.height, 0x76000000);
+        SettingsMenuCommonRenderer.drawBackground(guiGraphics, this.width, this.height);
     }
 
     @Override
@@ -60,8 +62,9 @@ public class GuiRandomPlacementConfig extends GuiBase {
     @Override
     protected void drawContents(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
         Layout layout = this.createLayout();
+        this.updateTabAnimations(mouseX, mouseY, layout);
 
-        this.drawText(guiGraphics, Lang.tr("iterablock.gui.random_config.title"), layout.x(), layout.titleY(), TITLE_COLOR, true);
+        SettingsMenuCommonRenderer.drawTitle(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.random_config.title"), layout.x(), layout.titleY());
         this.drawPanel(guiGraphics, layout);
         this.drawTabs(guiGraphics, mouseX, mouseY, layout);
         this.updateDragging(mouseX);
@@ -216,12 +219,7 @@ public class GuiRandomPlacementConfig extends GuiBase {
     }
 
     private void drawPanel(GuiGraphics guiGraphics, Layout layout) {
-        guiGraphics.fill(layout.x(), layout.panelY(), layout.x() + layout.width(), layout.panelY() + layout.panelHeight(), 0x7A0B1012);
-        guiGraphics.fill(layout.x(), layout.panelY(), layout.x() + layout.width(), layout.panelY() + 1, 0xBFFFFFFF);
-        guiGraphics.fill(layout.x(), layout.panelY(), layout.x() + 1, layout.panelY() + layout.panelHeight(), 0x66FFFFFF);
-        guiGraphics.fill(layout.x() + layout.width() - 1, layout.panelY(), layout.x() + layout.width(), layout.panelY() + layout.panelHeight(), 0x66FFFFFF);
-        guiGraphics.fill(layout.x(), layout.panelY() + layout.panelHeight() - 1, layout.x() + layout.width(), layout.panelY() + layout.panelHeight(), 0x66FFFFFF);
-        guiGraphics.fill(layout.x(), layout.bodyY(), layout.x() + layout.width(), layout.bodyY() + 1, 0x553D5558);
+        SettingsMenuCommonRenderer.drawPanel(guiGraphics, layout.x(), layout.panelY(), layout.width(), layout.panelHeight(), layout.bodyY());
     }
 
     private void drawTabs(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
@@ -229,28 +227,31 @@ public class GuiRandomPlacementConfig extends GuiBase {
             int x = layout.tabX(tab);
             boolean selected = this.selectedTab == tab;
             boolean hovered = this.isInside(mouseX, mouseY, x, layout.tabY(), layout.tabWidth(tab), TAB_HEIGHT);
-            int fill = selected
-                    ? 0x7A0B1012
-                    : this.withAlpha(this.blendRgb(0x111719, 0x273033, hovered ? 1.0F : 0.0F), hovered ? 0.74F : 0.58F);
-            int frameColor = this.withAlpha(FRAME_RGB, selected ? 0.62F : hovered ? 0.50F : 0.26F);
-            int textColor = selected || hovered ? 0xFFFFF1B0 : TEXT_COLOR;
-
-            guiGraphics.fill(x, layout.tabY(), x + layout.tabWidth(tab), layout.tabY() + TAB_HEIGHT, fill);
-            guiGraphics.fill(x, layout.tabY(), x + layout.tabWidth(tab), layout.tabY() + 1, frameColor);
-            guiGraphics.fill(x, layout.tabY(), x + 1, layout.tabY() + TAB_HEIGHT, frameColor);
-            guiGraphics.fill(x + layout.tabWidth(tab) - 1, layout.tabY(), x + layout.tabWidth(tab), layout.tabY() + TAB_HEIGHT, frameColor);
-            if (!selected) {
-                guiGraphics.fill(x, layout.tabY() + TAB_HEIGHT - 1, x + layout.tabWidth(tab), layout.tabY() + TAB_HEIGHT, frameColor);
-            }
-
-            String label = this.fitText(Lang.tr(tab.labelKey()), layout.tabWidth(tab) - 6);
-            this.drawCenteredText(guiGraphics, label, x, layout.tabY(), layout.tabWidth(tab), TAB_HEIGHT, textColor);
+            boolean pressed = hovered && this.isLeftMouseDown();
+            SettingsMenuCommonRenderer.drawTab(guiGraphics, this.textRenderer, Lang.tr(tab.labelKey()),
+                    x, layout.tabY(), layout.tabWidth(tab), TAB_HEIGHT, selected, pressed,
+                    this.easeOutCubic(this.tabHover[tab.ordinal()]), this.tabIndicator[tab.ordinal()]);
         }
+    }
 
-        // The selected tab shares the body fill, so its lower edge visually opens into the list.
-        int selectedX = layout.tabX(this.selectedTab);
-        guiGraphics.fill(selectedX + 1, layout.tabY() + TAB_HEIGHT - 1,
-                selectedX + layout.tabWidth(this.selectedTab) - 1, layout.tabY() + TAB_HEIGHT + 1, 0x7A0B1012);
+    private void updateTabAnimations(int mouseX, int mouseY, Layout layout) {
+        long now = System.nanoTime();
+        double deltaTime = this.lastFrameNanos == 0L ? 1.0 / 60.0 : (now - this.lastFrameNanos) / 1_000_000_000.0;
+        this.lastFrameNanos = now;
+        deltaTime = Math.max(0.0, Math.min(0.05, deltaTime));
+
+        for (RandomConfigTab tab : RandomConfigTab.values()) {
+            int index = tab.ordinal();
+            double target = this.isInside(mouseX, mouseY, layout.tabX(tab), layout.tabY(), layout.tabWidth(tab), TAB_HEIGHT)
+                    ? 1.0
+                    : 0.0;
+            this.tabHover[index] = this.approach(this.tabHover[index], target, HOVER_SPEED, deltaTime);
+            SettingsMenuCommonRenderer.updateTabIndicatorPid(this.tabIndicator[index], this.tabIndicatorVelocity[index],
+                    tab == this.selectedTab ? SettingsMenuCommonRenderer.TabIndicatorState.SELECTED
+                            : target > 0.0 ? SettingsMenuCommonRenderer.TabIndicatorState.HOVERED
+                            : SettingsMenuCommonRenderer.TabIndicatorState.NORMAL,
+                    deltaTime);
+        }
     }
 
     private void drawBlockConfig(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
@@ -259,30 +260,22 @@ public class GuiRandomPlacementConfig extends GuiBase {
 
         Row includeAirRow = this.getRow(layout, 1);
         boolean includeAir = BuilderHelperClientConfig.isRandomAreaIncludeAir();
-        this.drawLabelField(guiGraphics, includeAirRow, "包含空气");
-        this.drawValueField(guiGraphics, includeAirRow.valueX(), includeAirRow.y() + 1,
-                includeAirRow.valueWidth(), CONTROL_HEIGHT, includeAir ? "开启" : "关闭",
+        GuiSettingsControls.drawLabel(guiGraphics, this.textRenderer, this.fitText("包含空气", includeAirRow.labelWidth() - 8),
+                includeAirRow.x(), includeAirRow.y() + 1, includeAirRow.labelWidth(), CONTROL_HEIGHT);
+        GuiSettingsControls.drawValueField(guiGraphics, this.textRenderer, includeAir ? "开启" : "关闭",
+                includeAirRow.valueX(), includeAirRow.y() + 1, includeAirRow.valueWidth(), CONTROL_HEIGHT,
                 this.isInside(mouseX, mouseY, includeAirRow.valueX(), includeAirRow.y() + 1,
-                        includeAirRow.valueWidth(), CONTROL_HEIGHT));
+                        includeAirRow.valueWidth(), CONTROL_HEIGHT) ? 1.0 : 0.0, TEXT_COLOR);
     }
 
     private void drawBlockReplaceSlider(GuiGraphics guiGraphics, int mouseX, int mouseY, Row row) {
         int value = BuilderHelperClientConfig.getRandomAreaReplaceChance();
         boolean hovered = this.isInside(mouseX, mouseY, row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT);
-        int trackX = row.valueX();
-        int trackY = row.y() + 7;
-        int trackWidth = this.getRotationTrackWidth(row);
-        int fillWidth = Math.round(trackWidth * value / 100.0F);
-        int knobX = trackX + fillWidth;
-
-        this.drawLabelField(guiGraphics, row, "放置方块替换比例");
-        guiGraphics.fill(trackX, trackY, trackX + trackWidth, trackY + 3,
-                hovered || this.draggingBlockReplaceSlider ? 0xAA5E6666 : 0x8A4A5050);
-        guiGraphics.fill(trackX, trackY, trackX + fillWidth, trackY + 3, 0xBFFFFFFF);
-        guiGraphics.fill(knobX - 1, trackY - 3, knobX + 2, trackY + 6,
-                hovered || this.draggingBlockReplaceSlider ? 0xFFFFFFFF : 0xFFDDE8E8);
-        this.drawCenteredText(guiGraphics, value + "%", trackX + trackWidth + 4, row.y(), SLIDER_LABEL_WIDTH,
-                ROW_HEIGHT, TEXT_COLOR);
+        GuiSettingsControls.drawLabel(guiGraphics, this.textRenderer, this.fitText("放置方块替换比例", row.labelWidth() - 8),
+                row.x(), row.y() + 1, row.labelWidth(), CONTROL_HEIGHT);
+        GuiSettingsControls.drawSlider(guiGraphics, this.textRenderer, value, 0, 100,
+                row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT,
+                hovered || this.draggingBlockReplaceSlider ? 1.0 : 0.0);
     }
 
     private void drawRows(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
@@ -301,80 +294,51 @@ public class GuiRandomPlacementConfig extends GuiBase {
 
     private void drawConfigRow(GuiGraphics guiGraphics, int mouseX, int mouseY, Row row, String label, String value, boolean clickable) {
         boolean hovered = clickable && this.isInside(mouseX, mouseY, row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT);
-        this.drawLabelField(guiGraphics, row, label);
-        this.drawValueField(guiGraphics, row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT, value, hovered);
+        GuiSettingsControls.drawLabel(guiGraphics, this.textRenderer, this.fitText(label, row.labelWidth() - 8),
+                row.x(), row.y() + 1, row.labelWidth(), CONTROL_HEIGHT);
+        GuiSettingsControls.drawValueField(guiGraphics, this.textRenderer, value,
+                row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT, hovered ? 1.0 : 0.0, TEXT_COLOR);
         this.drawResetButton(guiGraphics, mouseX, mouseY, row);
     }
 
     private void drawStepperRow(GuiGraphics guiGraphics, int mouseX, int mouseY, Row row, String label, String value) {
-        this.drawLabelField(guiGraphics, row, label);
+        GuiSettingsControls.drawLabel(guiGraphics, this.textRenderer, this.fitText(label, row.labelWidth() - 8),
+                row.x(), row.y() + 1, row.labelWidth(), CONTROL_HEIGHT);
 
         this.drawSmallButton(guiGraphics, this.getMinusButtonX(row), row.y() + 1, "-1", this.isInside(mouseX, mouseY, this.getMinusButtonX(row), row.y() + 1, STEPPER_BUTTON_WIDTH, CONTROL_HEIGHT));
         this.drawSmallButton(guiGraphics, this.getPlusButtonX(row), row.y() + 1, "+1", this.isInside(mouseX, mouseY, this.getPlusButtonX(row), row.y() + 1, STEPPER_BUTTON_WIDTH, CONTROL_HEIGHT));
-        this.drawValueField(guiGraphics, this.getStepperValueX(row), row.y() + 1, this.getStepperValueWidth(row), CONTROL_HEIGHT, value, this.isInside(mouseX, mouseY, this.getStepperValueX(row), row.y() + 1, this.getStepperValueWidth(row), CONTROL_HEIGHT));
+        GuiSettingsControls.drawValueField(guiGraphics, this.textRenderer, value,
+                this.getStepperValueX(row), row.y() + 1, this.getStepperValueWidth(row), CONTROL_HEIGHT,
+                this.isInside(mouseX, mouseY, this.getStepperValueX(row), row.y() + 1, this.getStepperValueWidth(row), CONTROL_HEIGHT) ? 1.0 : 0.0,
+                TEXT_COLOR);
         this.drawResetButton(guiGraphics, mouseX, mouseY, row);
     }
 
     private void drawSliderRow(GuiGraphics guiGraphics, int mouseX, int mouseY, Row row, String label, int value) {
         boolean hovered = this.isInside(mouseX, mouseY, row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT);
-        int trackX = row.valueX();
-        int trackY = row.y() + 7;
-        int trackWidth = this.getRotationTrackWidth(row);
-        int fillWidth = Math.round(trackWidth * value / 100.0F);
-        int knobX = trackX + fillWidth;
-
-        this.drawLabelField(guiGraphics, row, label);
-
-        guiGraphics.fill(trackX, trackY, trackX + trackWidth, trackY + 3, hovered || this.draggingRotationSlider ? 0xAA5E6666 : 0x8A4A5050);
-        guiGraphics.fill(trackX, trackY, trackX + fillWidth, trackY + 3, 0xBFFFFFFF);
-        guiGraphics.fill(knobX - 1, trackY - 3, knobX + 2, trackY + 6, hovered || this.draggingRotationSlider ? 0xFFFFFFFF : 0xFFDDE8E8);
-        this.drawCenteredText(guiGraphics, value + "%", trackX + trackWidth + 4, row.y(), SLIDER_LABEL_WIDTH,
-                ROW_HEIGHT, TEXT_COLOR);
+        GuiSettingsControls.drawLabel(guiGraphics, this.textRenderer, this.fitText(label, row.labelWidth() - 8),
+                row.x(), row.y() + 1, row.labelWidth(), CONTROL_HEIGHT);
+        GuiSettingsControls.drawSlider(guiGraphics, this.textRenderer, value, 0, 100,
+                row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT,
+                hovered || this.draggingRotationSlider ? 1.0 : 0.0);
         this.drawResetButton(guiGraphics, mouseX, mouseY, row);
-    }
-
-    private void drawLabelField(GuiGraphics guiGraphics, Row row, String label) {
-        this.drawValueField(guiGraphics, row.x(), row.y() + 1, row.labelWidth(), CONTROL_HEIGHT,
-                this.fitText(label, row.labelWidth() - 8), false);
     }
 
     private void drawResetButton(GuiGraphics guiGraphics, int mouseX, int mouseY, Row row) {
         boolean hovered = this.isInside(mouseX, mouseY, row.resetX(), row.y() + 1, RESET_WIDTH, CONTROL_HEIGHT);
-        this.drawSimpleButton(guiGraphics, row.resetX(), row.y() + 1, RESET_WIDTH, CONTROL_HEIGHT,
-                Lang.tr("iterablock.gui.settings.reset"), hovered);
+        GuiSettingsControls.drawButton(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.settings.reset"),
+                row.resetX(), row.y() + 1, RESET_WIDTH, CONTROL_HEIGHT, hovered ? 1.0 : 0.0);
     }
 
     private void drawSmallButton(GuiGraphics guiGraphics, int x, int y, String label, boolean hovered) {
-        this.drawSimpleButton(guiGraphics, x, y, STEPPER_BUTTON_WIDTH, CONTROL_HEIGHT, label, hovered);
-    }
-
-    private void drawValueField(GuiGraphics guiGraphics, int x, int y, int width, int height, String value, boolean hovered) {
-        int fill = hovered ? 0xAA5E6666 : 0x8A4A5050;
-        int border = hovered ? 0xE8FFFFFF : 0xBFFFFFFF;
-
-        guiGraphics.fill(x, y, x + width, y + height, fill);
-        guiGraphics.fill(x, y, x + width, y + 1, border);
-        guiGraphics.fill(x, y + height - 1, x + width, y + height, border);
-        guiGraphics.fill(x, y, x + 1, y + height, border);
-        guiGraphics.fill(x + width - 1, y, x + width, y + height, border);
-        this.drawCenteredText(guiGraphics, value, x, y, width, height, TEXT_COLOR);
+        GuiSettingsControls.drawButton(guiGraphics, this.textRenderer, label,
+                x, y, STEPPER_BUTTON_WIDTH, CONTROL_HEIGHT, hovered ? 1.0 : 0.0);
     }
 
     private void drawBackButton(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
         boolean hovered = this.isInside(mouseX, mouseY, layout.backX(), layout.backY(), BACK_WIDTH, BACK_HEIGHT);
-        this.drawSimpleButton(guiGraphics, layout.backX(), layout.backY(), BACK_WIDTH, BACK_HEIGHT, Lang.tr("iterablock.gui.button.back"), hovered);
-    }
-
-    private void drawSimpleButton(GuiGraphics guiGraphics, int x, int y, int width, int height, String label, boolean hovered) {
-        int fill = hovered ? 0xAA5E6666 : 0x8A4A5050;
-        int border = hovered ? 0xE8FFFFFF : 0xBFFFFFFF;
-
-        guiGraphics.fill(x, y, x + width, y + height, fill);
-        guiGraphics.fill(x, y, x + width, y + 1, border);
-        guiGraphics.fill(x, y + height - 1, x + width, y + height, border);
-        guiGraphics.fill(x, y, x + 1, y + height, border);
-        guiGraphics.fill(x + width - 1, y, x + width, y + height, border);
-        this.drawCenteredText(guiGraphics, label, x, y, width, height, 0xFFFFFFFF);
+        GuiSettingsControls.drawButton(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.button.back"),
+                layout.backX(), layout.backY(), BACK_WIDTH, BACK_HEIGHT, hovered ? 1.0 : 0.0);
     }
 
     private void startEditing(Field field) {
@@ -461,7 +425,7 @@ public class GuiRandomPlacementConfig extends GuiBase {
         int listY = panelY + TAB_HEIGHT + 8;
         int backY = Math.min(this.height - SAFE_MARGIN - BACK_HEIGHT, panelY + panelHeight + 8);
         int backX = x + width - BACK_WIDTH;
-        int tabWidth = Math.max(1, Math.min(PREFERRED_TAB_WIDTH, width / RandomConfigTab.values().length));
+        int tabWidth = Math.max(1, width / RandomConfigTab.values().length);
         int valueWidth = Math.max(72, Math.min(PREFERRED_VALUE_WIDTH, width / 3));
         return new Layout(x, titleY, panelY, width, panelHeight, listY, panelY,
                 tabWidth, valueWidth, backX, backY);
@@ -495,19 +459,13 @@ public class GuiRandomPlacementConfig extends GuiBase {
     }
 
     private void setRotationChanceFromMouse(Row row, int mouseX) {
-        double progress = (mouseX - row.valueX()) / (double) this.getRotationTrackWidth(row);
-        int value = (int) Math.round(this.clamp(progress, 0.0, 1.0) * 100.0);
-        BuilderHelperClientConfig.setRandomPlacementRotationChance(value);
+        BuilderHelperClientConfig.setRandomPlacementRotationChance(
+                GuiSettingsControls.sliderValueFromMouse(mouseX, row.valueX(), row.valueWidth(), 0, 100));
     }
 
     private void setBlockReplaceChanceFromMouse(Row row, int mouseX) {
-        double progress = (mouseX - row.valueX()) / (double) this.getRotationTrackWidth(row);
-        int value = (int) Math.round(this.clamp(progress, 0.0, 1.0) * 100.0);
-        BuilderHelperClientConfig.setRandomAreaReplaceChance(value);
-    }
-
-    private int getRotationTrackWidth(Row row) {
-        return Math.max(24, row.valueWidth() - SLIDER_LABEL_WIDTH - 4);
+        BuilderHelperClientConfig.setRandomAreaReplaceChance(
+                GuiSettingsControls.sliderValueFromMouse(mouseX, row.valueX(), row.valueWidth(), 0, 100));
     }
 
     private void adjustField(Field field, int amount) {
@@ -531,19 +489,6 @@ public class GuiRandomPlacementConfig extends GuiBase {
         }
     }
 
-    private void drawText(GuiGraphics guiGraphics, String text, double x, double y, int color, boolean shadow) {
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().scale((float) TEXT_SCALE, (float) TEXT_SCALE, 1.0F);
-        guiGraphics.drawString(this.textRenderer, text, (int) Math.round(x / TEXT_SCALE), (int) Math.round(y / TEXT_SCALE), color, shadow);
-        guiGraphics.pose().popPose();
-    }
-
-    private void drawCenteredText(GuiGraphics guiGraphics, String text, int x, int y, int width, int height, int color) {
-        int textX = x + (int) Math.round((width - this.textRenderer.width(text) * TEXT_SCALE) / 2.0);
-        int textY = y + (int) Math.round((height - 8.0 * TEXT_SCALE) / 2.0);
-        this.drawText(guiGraphics, text, textX, textY, color, false);
-    }
-
     private String fitText(String text, int maxWidth) {
         if (this.textRenderer.width(text) * TEXT_SCALE <= maxWidth) {
             return text;
@@ -563,8 +508,23 @@ public class GuiRandomPlacementConfig extends GuiBase {
         return result.isEmpty() ? suffix : result + suffix;
     }
 
+    private double approach(double current, double target, double speed, double deltaTime) {
+        double step = speed * deltaTime;
+        return current < target ? Math.min(target, current + step) : Math.max(target, current - step);
+    }
+
+    private double easeOutCubic(double value) {
+        double inverse = 1.0 - value;
+        return 1.0 - inverse * inverse * inverse;
+    }
+
+    private boolean isLeftMouseDown() {
+        return GLFW.glfwGetMouseButton(net.minecraft.client.Minecraft.getInstance().getWindow().getWindow(),
+                GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+    }
+
     private boolean isInside(int mouseX, int mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
+        return GuiSettingsControls.contains(mouseX, mouseY, x, y, width, height);
     }
 
     private boolean isHeightField(Field field) {
@@ -585,23 +545,6 @@ public class GuiRandomPlacementConfig extends GuiBase {
 
     private int getPlusButtonX(Row row) {
         return row.valueX() + row.valueWidth() - STEPPER_BUTTON_WIDTH;
-    }
-
-    private double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
-    private int blendRgb(int first, int second, double amount) {
-        double t = Math.max(0.0, Math.min(1.0, amount));
-        int red = (int) Math.round(((first >> 16) & 0xFF) + (((second >> 16) & 0xFF) - ((first >> 16) & 0xFF)) * t);
-        int green = (int) Math.round(((first >> 8) & 0xFF) + (((second >> 8) & 0xFF) - ((first >> 8) & 0xFF)) * t);
-        int blue = (int) Math.round((first & 0xFF) + ((second & 0xFF) - (first & 0xFF)) * t);
-        return red << 16 | green << 8 | blue;
-    }
-
-    private int withAlpha(int rgb, double alpha) {
-        int alphaByte = (int) Math.round(Math.max(0.0, Math.min(1.0, alpha)) * 255.0);
-        return alphaByte << 24 | rgb;
     }
 
     private record Layout(int x, int titleY, int panelY, int width, int panelHeight, int listY, int tabY,

@@ -39,7 +39,6 @@ public class GuiBuilderHelperSettings extends GuiBase {
     private static final int BACK_BUTTON_HEIGHT = 16;
     private static final double TEXT_SCALE = 0.52;
     private static final double HOVER_SPEED = 8.0;
-    private static final int INDICATOR_SEGMENTS = 3;
     private static final int INDICATOR_TOP_RGB = 0xF3C6D3;
     private static final int INDICATOR_MIDDLE_RGB = 0xBFE3D7;
     private static final int INDICATOR_BOTTOM_RGB = 0xF6D6A8;
@@ -51,13 +50,14 @@ public class GuiBuilderHelperSettings extends GuiBase {
 
     private final List<ConfigEntry> entries = new ArrayList<>();
     private final double[] tabHover = new double[Category.values().length];
-    private final double[][] tabIndicator = new double[Category.values().length][INDICATOR_SEGMENTS];
-    private final double[][] tabIndicatorVelocity = new double[Category.values().length][INDICATOR_SEGMENTS];
+    private final double[][] tabIndicator = new double[Category.values().length][SettingsMenuCommonRenderer.INDICATOR_SEGMENTS];
+    private final double[][] tabIndicatorVelocity = new double[Category.values().length][SettingsMenuCommonRenderer.INDICATOR_SEGMENTS];
     private double[] valueHover = new double[0];
     private double[] resetHover = new double[0];
     private double backHover;
     private Category category = Category.LITEMATIC;
     private ConfigEntry editingEntry;
+    private ConfigEntry draggingSliderEntry;
     private int scrollOffset;
     private long lastFrameNanos;
     private final boolean returnToMainMenu;
@@ -82,7 +82,7 @@ public class GuiBuilderHelperSettings extends GuiBase {
 
     @Override
     protected void drawScreenBackground(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        guiGraphics.fill(0, 0, this.width, this.height, 0x76000000);
+        SettingsMenuCommonRenderer.drawBackground(guiGraphics, this.width, this.height);
     }
 
     @Override
@@ -92,9 +92,10 @@ public class GuiBuilderHelperSettings extends GuiBase {
     @Override
     protected void drawContents(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
         Layout layout = this.createLayout();
+        this.updateSliderDrag(mouseX, layout);
         this.updateAnimations(mouseX, mouseY, layout);
 
-        this.drawTextWithShadow(guiGraphics, Lang.tr("iterablock.gui.settings.title"), layout.x(), layout.titleY(), 0xFFF3EECF);
+        SettingsMenuCommonRenderer.drawTitle(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.settings.title"), layout.x(), layout.titleY());
         this.drawListPanel(guiGraphics, mouseX, mouseY, layout);
         this.drawTabs(guiGraphics, mouseX, mouseY, layout);
         this.drawCategoryNote(guiGraphics, layout);
@@ -134,6 +135,13 @@ public class GuiBuilderHelperSettings extends GuiBase {
             ConfigEntry entry = row.entry();
 
             if (this.isInside(mouseX, mouseY, row.valueX(), row.y() + 1, row.valueWidth(), CONTROL_HEIGHT)) {
+                if (entry.type == EntryType.SLIDER) {
+                    this.draggingSliderEntry = entry;
+                    this.setSliderValue(entry, row, mouseX);
+                    this.editingEntry = null;
+                    this.listeningKeyEntry = null;
+                    return true;
+                }
                 this.handleValueClick(entry);
                 return true;
             }
@@ -146,6 +154,9 @@ public class GuiBuilderHelperSettings extends GuiBase {
                 }
                 this.editingEntry = null;
                 this.listeningKeyEntry = null;
+                if (this.draggingSliderEntry == entry) {
+                    this.draggingSliderEntry = null;
+                }
                 this.saveConfig();
                 return true;
             }
@@ -240,19 +251,8 @@ public class GuiBuilderHelperSettings extends GuiBase {
             boolean selected = tab == this.category;
             boolean pressed = this.isLeftMouseDown() && this.isInside(mouseX, mouseY, x, layout.tabY(), width, TAB_HEIGHT);
             double hover = this.easeOutCubic(this.tabHover[tab.ordinal()]);
-            int fill = selected
-                    ? 0x7A0B1012
-                    : this.withAlpha(this.blendRgb(0x111719, 0x273033, Math.max(hover, 0.0)), 0.58 + hover * 0.16);
-
-            guiGraphics.fill(x, layout.tabY(), x + width, layout.tabY() + TAB_HEIGHT, fill);
-            this.drawRectFrame(guiGraphics, x, layout.tabY(), width, TAB_HEIGHT, selected ? 0.62 : 0.26 + hover * 0.24);
-            if (selected) {
-                guiGraphics.fill(x + 1, layout.tabY() + TAB_HEIGHT - 1, x + width - 1, layout.tabY() + TAB_HEIGHT + 1, 0x7A0B1012);
-            }
-            this.drawSegmentIndicator(guiGraphics, x + 3, layout.tabY() + TAB_HEIGHT - 6, width - 6, this.tabIndicator[tab.ordinal()], pressed ? IndicatorState.PRESSED : selected ? IndicatorState.SELECTED : hover > 0.02 ? IndicatorState.HOVERED : IndicatorState.NORMAL);
-            String tabText = this.fitText(tab.title(), Math.max(1, width - 6));
-            this.drawCenteredText(guiGraphics, tabText, x, layout.tabY(), width, TAB_HEIGHT,
-                    selected || hover > 0.02 ? 0xFFFFF1B0 : TEXT);
+            SettingsMenuCommonRenderer.drawTab(guiGraphics, this.textRenderer, tab.title(), x, layout.tabY(), width, TAB_HEIGHT,
+                    selected, pressed, hover, this.tabIndicator[tab.ordinal()]);
             x += width + TAB_GAP;
         }
     }
@@ -264,13 +264,7 @@ public class GuiBuilderHelperSettings extends GuiBase {
         int height = layout.listHeight() + TAB_HEIGHT;
         int bottom = y + height;
 
-        // Match the random placement settings: tabs sit on a single framed content surface.
-        guiGraphics.fill(x, y, x + width, bottom, 0x7A0B1012);
-        guiGraphics.fill(x, y, x + width, y + 1, 0xBFFFFFFF);
-        guiGraphics.fill(x, y, x + 1, bottom, 0x66FFFFFF);
-        guiGraphics.fill(x + width - 1, y, x + width, bottom, 0x66FFFFFF);
-        guiGraphics.fill(x, bottom - 1, x + width, bottom, 0x66FFFFFF);
-        guiGraphics.fill(x, layout.listY(), x + width, layout.listY() + 1, 0x553D5558);
+        SettingsMenuCommonRenderer.drawPanel(guiGraphics, x, y, width, height, layout.listY());
 
         for (RowPlacement row : this.getVisibleRows(layout)) {
             this.drawRow(guiGraphics, mouseX, mouseY, row);
@@ -296,9 +290,8 @@ public class GuiBuilderHelperSettings extends GuiBase {
         int x = layout.backX() + offset;
         int y = layout.backY();
 
-        this.drawSimpleButtonBox(guiGraphics, x, y, BACK_BUTTON_WIDTH, BACK_BUTTON_HEIGHT, hover);
-        String backText = Lang.tr("iterablock.gui.button.back");
-        this.drawCenteredText(guiGraphics, backText, x, y, BACK_BUTTON_WIDTH, BACK_BUTTON_HEIGHT, 0xFFFFFFFF);
+        GuiSettingsControls.drawButton(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.button.back"),
+                x, y, BACK_BUTTON_WIDTH, BACK_BUTTON_HEIGHT, hover);
     }
 
     private void drawRow(GuiGraphics guiGraphics, int mouseX, int mouseY, RowPlacement row) {
@@ -306,39 +299,35 @@ public class GuiBuilderHelperSettings extends GuiBase {
         double valueHoverEase = this.easeOutCubic(this.valueHover[entry.index]);
         double resetHoverEase = this.easeOutCubic(this.resetHover[entry.index]);
         int y = row.y();
-        int valueX = row.valueX() + (int) Math.round(valueHoverEase * 3.0);
+        int valueX = entry.type == EntryType.SLIDER
+                ? row.valueX()
+                : row.valueX() + (int) Math.round(valueHoverEase * 3.0);
         int valueTextColor = entry.type == EntryType.BOOLEAN ? (entry.booleanValue() ? GREEN : RED) : TEXT;
 
         int labelWidth = Math.max(28, row.valueX() - row.x() - 6);
-        this.drawSimpleButtonBox(guiGraphics, row.x(), y + 1, labelWidth, CONTROL_HEIGHT, 0.0);
-        this.drawCenteredText(guiGraphics, this.fitText(entry.label(), labelWidth - 8), row.x(), y + 1, labelWidth, CONTROL_HEIGHT, TEXT);
+        GuiSettingsControls.drawLabel(guiGraphics, this.textRenderer, this.fitText(entry.label(), labelWidth - 8),
+                row.x(), y + 1, labelWidth, CONTROL_HEIGHT);
 
-        this.drawSimpleButtonBox(guiGraphics, valueX, y + 1, row.valueWidth(), CONTROL_HEIGHT, valueHoverEase);
-        String valueText = this.fitText(entry.displayValue(this.editingEntry == entry, this.listeningKeyEntry == entry),
-                Math.max(1, row.valueWidth() - 8));
-        this.drawCenteredText(guiGraphics, valueText, valueX, y + 1, row.valueWidth(), CONTROL_HEIGHT, valueTextColor);
+        if (entry.type == EntryType.SLIDER) {
+            GuiSettingsControls.drawSlider(guiGraphics, this.textRenderer, entry.sliderValue(), 0, 100,
+                    valueX, y + 1, row.valueWidth(), CONTROL_HEIGHT, valueHoverEase);
+        } else {
+            String valueText = this.fitText(entry.displayValue(this.editingEntry == entry, this.listeningKeyEntry == entry),
+                    Math.max(1, row.valueWidth() - 8));
+            GuiSettingsControls.drawValueField(guiGraphics, this.textRenderer, valueText,
+                    valueX, y + 1, row.valueWidth(), CONTROL_HEIGHT, valueHoverEase, valueTextColor);
+        }
 
-        this.drawSimpleButtonBox(guiGraphics, row.resetX(), y + 1, RESET_WIDTH, CONTROL_HEIGHT, resetHoverEase);
-        String resetText = Lang.tr("iterablock.gui.settings.reset");
-        this.drawCenteredText(guiGraphics, resetText, row.resetX(), y + 1, RESET_WIDTH, CONTROL_HEIGHT, 0xFFFFFFFF);
+        GuiSettingsControls.drawButton(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.settings.reset"),
+                row.resetX(), y + 1, RESET_WIDTH, CONTROL_HEIGHT, resetHoverEase);
     }
 
-    private void drawSimpleButtonBox(GuiGraphics guiGraphics, int x, int y, int width, int height, double hover) {
-        int fill = hover > 0.02 ? 0xAA5E6666 : 0x8A4A5050;
-        int border = hover > 0.02 ? 0xE8FFFFFF : 0xBFFFFFFF;
-
-        guiGraphics.fill(x, y, x + width, y + height, fill);
-        guiGraphics.fill(x, y, x + width, y + 1, border);
-        guiGraphics.fill(x, y + height - 1, x + width, y + height, border);
-        guiGraphics.fill(x, y, x + 1, y + height, border);
-        guiGraphics.fill(x + width - 1, y, x + width, y + height, border);
-    }
-
-    private void drawSegmentIndicator(GuiGraphics guiGraphics, int x, int y, int availableWidth, double[] progress, IndicatorState state) {
+    private void drawSegmentIndicator(GuiGraphics guiGraphics, int x, int y, int availableWidth, double[] progress,
+                                      SettingsMenuCommonRenderer.TabIndicatorState state) {
         int shortLength = Math.max(5, Math.min(8, availableWidth));
         int middleLength = Math.max(shortLength + 5, Math.min(18, availableWidth));
         int longLength = Math.max(middleLength + 8, Math.min(36, availableWidth));
-        int thickness = state == IndicatorState.SELECTED ? 2 : 1;
+        int thickness = state == SettingsMenuCommonRenderer.TabIndicatorState.SELECTED ? 2 : 1;
         double strongestProgress = Math.max(progress[0], Math.max(progress[1], progress[2]));
         double baseAlpha = switch (state) {
             case SELECTED -> 0.92;
@@ -347,7 +336,7 @@ public class GuiBuilderHelperSettings extends GuiBase {
             case DISABLED -> 0.10;
             case NORMAL -> 0.18;
         };
-        double compress = state == IndicatorState.PRESSED ? 0.86 : 1.0;
+        double compress = state == SettingsMenuCommonRenderer.TabIndicatorState.PRESSED ? 0.86 : 1.0;
 
         this.drawIndicatorSegment(guiGraphics, x, y, shortLength, thickness, progress[0] * compress, baseAlpha * 0.88, INDICATOR_TOP_RGB);
         this.drawIndicatorSegment(guiGraphics, x, y + 2, middleLength, thickness, progress[1] * compress, baseAlpha * 0.92, INDICATOR_MIDDLE_RGB);
@@ -527,7 +516,11 @@ public class GuiBuilderHelperSettings extends GuiBase {
             int width = this.getTabWidth(layout);
             double target = this.isInside(mouseX, mouseY, tabX, layout.tabY(), width, TAB_HEIGHT) ? 1.0 : 0.0;
             this.tabHover[tab.ordinal()] = this.approach(this.tabHover[tab.ordinal()], target, HOVER_SPEED, deltaTime);
-            this.updateIndicatorPid(this.tabIndicator[tab.ordinal()], this.tabIndicatorVelocity[tab.ordinal()], tab == this.category ? IndicatorState.SELECTED : target > 0.0 ? IndicatorState.HOVERED : IndicatorState.NORMAL, deltaTime);
+            SettingsMenuCommonRenderer.updateTabIndicatorPid(this.tabIndicator[tab.ordinal()], this.tabIndicatorVelocity[tab.ordinal()],
+                    tab == this.category ? SettingsMenuCommonRenderer.TabIndicatorState.SELECTED
+                            : target > 0.0 ? SettingsMenuCommonRenderer.TabIndicatorState.HOVERED
+                            : SettingsMenuCommonRenderer.TabIndicatorState.NORMAL,
+                    deltaTime);
             tabX += width + TAB_GAP;
         }
 
@@ -546,6 +539,36 @@ public class GuiBuilderHelperSettings extends GuiBase {
 
         double backTarget = this.isInside(mouseX, mouseY, layout.backX(), layout.backY(), BACK_BUTTON_WIDTH, BACK_BUTTON_HEIGHT) ? 1.0 : 0.0;
         this.backHover = this.approach(this.backHover, backTarget, HOVER_SPEED, deltaTime);
+    }
+
+    private void updateSliderDrag(int mouseX, Layout layout) {
+        if (this.draggingSliderEntry == null) {
+            return;
+        }
+
+        if (!this.isLeftMouseDown()) {
+            this.draggingSliderEntry = null;
+            return;
+        }
+
+        for (RowPlacement row : this.getVisibleRows(layout)) {
+            if (row.entry() == this.draggingSliderEntry) {
+                this.setSliderValue(this.draggingSliderEntry, row, mouseX);
+                return;
+            }
+        }
+
+        this.draggingSliderEntry = null;
+    }
+
+    private void setSliderValue(ConfigEntry entry, RowPlacement row, int mouseX) {
+        int value = GuiSettingsControls.sliderValueFromMouse(mouseX, row.valueX(), row.valueWidth(), 0, 100);
+        String newValue = Integer.toString(value);
+
+        if (!newValue.equals(entry.value)) {
+            entry.value = newValue;
+            this.saveConfig();
+        }
     }
 
     private void returnToMainMenu() {
@@ -717,10 +740,8 @@ public class GuiBuilderHelperSettings extends GuiBase {
         this.add(Category.HOTKEYS, "placeProjectionKey", "iterablock.gui.settings.keybind.place_projection", EntryType.KEYBIND, "Y");
         this.add(Category.HOTKEYS, "rotateProjectionKey", "iterablock.gui.settings.keybind.rotate_projection", EntryType.KEYBIND, "R");
         this.add(Category.HOTKEYS, "mirrorProjectionKey", "iterablock.gui.settings.keybind.mirror_projection", EntryType.KEYBIND, "G");
-        this.add(Category.VISUALS, "renderFillRed", "iterablock.gui.settings.option.render_fill_red", EntryType.TEXT, Integer.toString(BuilderHelperClientConfig.DEFAULT_RENDER_FILL_RED));
-        this.add(Category.VISUALS, "renderFillGreen", "iterablock.gui.settings.option.render_fill_green", EntryType.TEXT, Integer.toString(BuilderHelperClientConfig.DEFAULT_RENDER_FILL_GREEN));
-        this.add(Category.VISUALS, "renderFillBlue", "iterablock.gui.settings.option.render_fill_blue", EntryType.TEXT, Integer.toString(BuilderHelperClientConfig.DEFAULT_RENDER_FILL_BLUE));
-        this.add(Category.VISUALS, "renderFillOpacity", "iterablock.gui.settings.option.render_fill_opacity", EntryType.TEXT, Integer.toString(BuilderHelperClientConfig.DEFAULT_RENDER_FILL_OPACITY));
+        this.add(Category.VISUALS, "renderFillOpacity", "iterablock.gui.settings.option.render_fill_opacity", EntryType.SLIDER, Integer.toString(BuilderHelperClientConfig.DEFAULT_RENDER_FILL_OPACITY));
+        this.add(Category.VISUALS, "selectionFillOpacity", "iterablock.gui.settings.option.selection_fill_opacity", EntryType.SLIDER, Integer.toString(BuilderHelperClientConfig.DEFAULT_SELECTION_FILL_OPACITY));
         this.add(Category.LITEMATIC, "placementRange", "iterablock.gui.settings.option.placement_range", EntryType.TEXT, "100");
         this.add(Category.LITEMATIC, "linearArrayRenderLimit", "iterablock.gui.settings.option.linear_array_render_limit", EntryType.TEXT, "5");
         this.add(Category.LITEMATIC, "volumeArrayRenderLimit", "iterablock.gui.settings.option.volume_array_render_limit", EntryType.TEXT, "3");
@@ -792,34 +813,6 @@ public class GuiBuilderHelperSettings extends GuiBase {
         return Math.max(target, current - step);
     }
 
-    private void updateIndicatorPid(double[] values, double[] velocities, IndicatorState state, double deltaTime) {
-        double[] stiffness = {14.0, 24.0, 40.0};
-        double[] damping = {6.8, 8.4, 10.0};
-
-        for (int i = 0; i < INDICATOR_SEGMENTS; i++) {
-            double target = this.getIndicatorTarget(state, i);
-            double error = target - values[i];
-            double acceleration = error * stiffness[i] - velocities[i] * damping[i];
-
-            velocities[i] += acceleration * deltaTime;
-            values[i] += velocities[i] * deltaTime;
-
-            if (values[i] < 0.0 || values[i] > 1.0) {
-                values[i] = Math.max(0.0, Math.min(1.0, values[i]));
-                velocities[i] = 0.0;
-            }
-        }
-    }
-
-    private double getIndicatorTarget(IndicatorState state, int segment) {
-        return switch (state) {
-            case SELECTED, HOVERED -> 1.0;
-            case PRESSED -> 0.86;
-            case DISABLED -> segment == 0 ? 0.25 : 0.0;
-            case NORMAL -> segment == 0 ? 0.45 : 0.0;
-        };
-    }
-
     private double easeOutCubic(double value) {
         double inverse = 1.0 - value;
         return 1.0 - inverse * inverse * inverse;
@@ -839,7 +832,7 @@ public class GuiBuilderHelperSettings extends GuiBase {
     }
 
     private boolean isInside(int mouseX, int mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
+        return GuiSettingsControls.contains(mouseX, mouseY, x, y, width, height);
     }
 
     private boolean isLeftMouseDown() {
@@ -866,16 +859,9 @@ public class GuiBuilderHelperSettings extends GuiBase {
     private enum EntryType {
         BOOLEAN,
         TEXT,
+        SLIDER,
         ENUM,
         KEYBIND
-    }
-
-    private enum IndicatorState {
-        NORMAL,
-        HOVERED,
-        SELECTED,
-        PRESSED,
-        DISABLED
     }
 
     private static class ConfigEntry {
@@ -926,6 +912,14 @@ public class GuiBuilderHelperSettings extends GuiBase {
 
         private void reset() {
             this.value = this.defaultValue;
+        }
+
+        private int sliderValue() {
+            try {
+                return Math.max(0, Math.min(100, Integer.parseInt(this.value)));
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
         }
 
         private String displayValue(boolean editing, boolean listening) {

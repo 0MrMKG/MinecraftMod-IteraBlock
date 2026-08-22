@@ -17,6 +17,13 @@ import net.minecraft.network.chat.Component;
 public class ToolHudRenderer implements IRenderer {
     private static final ToolHudRenderer INSTANCE = new ToolHudRenderer();
     private static final float HUD_SCALE = 0.75F;
+    private static final int HOTBAR_AVAILABLE_THEME = 0xFF9AF5B0;
+    private static final int HOTBAR_RESERVED_THEME = 0xFFD98A4E;
+    private static final int HOTBAR_AVAILABLE_ACCENT = 0xB69AF5B0;
+    private static final int HOTBAR_RESERVED_ACCENT = 0xB6D98A4E;
+    private static final int[] MODE_RAINBOW_COLORS = {
+            0xFFFF6B6B, 0xFFFFA24D, 0xFFFFE680, 0xFF9AF5B0, 0xFF7FE9FF, 0xFF8DB6FF
+    };
     private HudCacheKey cachedHudKey;
     private HudLayout cachedHudLayout;
 
@@ -45,14 +52,16 @@ public class ToolHudRenderer implements IRenderer {
         }
 
         Font font = minecraft.font;
-        HudLayout hud = this.getHudLayout(minecraft, font, mode);
+        boolean canScrollHotbar = ToolInputHandler.getInstance().canScrollHotbar(minecraft);
+        HudLayout hud = this.getHudLayout(minecraft, font, mode, canScrollHotbar);
         int x = Math.round(8 / HUD_SCALE);
         int y = Math.round(8 / HUD_SCALE);
 
         guiGraphics.pose().pushPose();
         guiGraphics.pose().scale(HUD_SCALE, HUD_SCALE, 1.0F);
         guiGraphics.fill(x - 4, y - 4, x + hud.width(), y + hud.height(), 0x8A071018);
-        guiGraphics.fill(x - 4, y - 4, x + hud.width(), y - 3, 0xB64EAFC5);
+        guiGraphics.fill(x - 4, y - 4, x + hud.width(), y - 3,
+                canScrollHotbar ? HOTBAR_AVAILABLE_ACCENT : HOTBAR_RESERVED_ACCENT);
 
         for (int i = 0; i < hud.lines().size(); i++) {
             HudLine line = hud.lines().get(i);
@@ -62,8 +71,8 @@ public class ToolHudRenderer implements IRenderer {
         guiGraphics.pose().popPose();
     }
 
-    private HudLayout getHudLayout(Minecraft minecraft, Font font, ToolMode mode) {
-        HudCacheKey key = createHudCacheKey(minecraft, mode);
+    private HudLayout getHudLayout(Minecraft minecraft, Font font, ToolMode mode, boolean canScrollHotbar) {
+        HudCacheKey key = createHudCacheKey(minecraft, mode, canScrollHotbar);
 
         if (key.equals(this.cachedHudKey) && this.cachedHudLayout != null) {
             return this.cachedHudLayout;
@@ -75,11 +84,12 @@ public class ToolHudRenderer implements IRenderer {
                 value(ClientToolState.currentLitematic == null
                         ? Lang.tr("iterablock.tool.litematic_none_value")
                         : ClientToolState.currentLitematic.displayName()));
+        int themeColor = canScrollHotbar ? HOTBAR_AVAILABLE_THEME : HOTBAR_RESERVED_THEME;
         List<HudLine> lines = List.of(
-                new HudLine(Component.literal("IteraBlock"), 0xD6F4FF),
-                new HudLine(modeText, getModeTextColor(mode)),
+                new HudLine(Component.literal("IteraBlock"), themeColor),
+                new HudLine(modeText, getModeRainbowColor(mode)),
                 new HudLine(litematicText, 0xFFFFFF),
-                new HudLine(getInfoLine(minecraft, mode), 0xD6F4FF)
+                new HudLine(getInfoLine(minecraft, mode), 0xFFFFFF)
         );
 
         int width = 0;
@@ -92,11 +102,16 @@ public class ToolHudRenderer implements IRenderer {
         return this.cachedHudLayout;
     }
 
-    private static HudCacheKey createHudCacheKey(Minecraft minecraft, ToolMode mode) {
+    private static int getModeRainbowColor(ToolMode mode) {
+        return MODE_RAINBOW_COLORS[mode.ordinal() % MODE_RAINBOW_COLORS.length];
+    }
+
+    private static HudCacheKey createHudCacheKey(Minecraft minecraft, ToolMode mode, boolean canScrollHotbar) {
         SchematicPlacementState.Axis lookAxis = minecraft.player == null ? null : SchematicPlacementState.getLookAxis(minecraft.player.getLookAngle());
         BlockPos symmetryCenter = SymmetryPlacementState.getCenter();
         return new HudCacheKey(
                 mode,
+                canScrollHotbar,
                 SchematicPlacementState.getArrayMode(),
                 ToolState.getRandomPlacementMode(),
                 ToolState.isRandomAreaLocked(),
@@ -139,21 +154,6 @@ public class ToolHudRenderer implements IRenderer {
                 SymmetryPlacementState.isLocked(),
                 SymmetryPlacementState.isEnabled()
         );
-    }
-
-    private static int getModeTextColor(ToolMode mode) {
-        if (mode == ToolMode.SCHEMATIC_PLACEMENT) {
-            return 0x9AF5B0;
-        }
-
-        if (mode == ToolMode.ARRAY_PLACEMENT
-                || mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT
-                || mode == ToolMode.BEZIER_CURVE_GENERATION
-                || mode == ToolMode.SYMMETRY_PLACEMENT) {
-            return 0xFFE680;
-        }
-
-        return 0xFFFFFF;
     }
 
     private static Component getInfoLine(Minecraft minecraft, ToolMode mode) {
@@ -321,6 +321,7 @@ public class ToolHudRenderer implements IRenderer {
 
     private record HudCacheKey(
             ToolMode mode,
+            boolean canScrollHotbar,
             SchematicPlacementState.ArrayMode arrayMode,
             ToolState.RandomPlacementMode randomPlacementMode,
             boolean randomAreaLocked,

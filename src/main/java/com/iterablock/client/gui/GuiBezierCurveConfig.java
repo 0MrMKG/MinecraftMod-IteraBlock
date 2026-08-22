@@ -2,6 +2,8 @@ package com.iterablock.client.gui;
 
 import com.iterablock.client.Lang;
 import com.iterablock.client.config.BuilderHelperClientConfig;
+import com.iterablock.client.gui.settings.GuiSettingsControls;
+import com.iterablock.client.gui.settings.SettingsMenuCommonRenderer;
 
 import fi.dy.masa.malilib.gui.GuiBase;
 import net.minecraft.client.gui.GuiGraphics;
@@ -19,10 +21,8 @@ public class GuiBezierCurveConfig extends GuiBase {
     private static final int BACK_WIDTH = 58;
     private static final int BACK_HEIGHT = 16;
     private static final double TEXT_SCALE = 0.52;
-    private static final int TITLE_COLOR = 0xFFF3EECF;
     private static final int TEXT_COLOR = 0xFFDDE8E8;
-    private static final int ACTIVE_COLOR = 0xFFFFFFB8;
-    private static final int ACCENT = 0xFFF3C6D3;
+    private static final double[] HIDDEN_TAB_INDICATOR = new double[SettingsMenuCommonRenderer.INDICATOR_SEGMENTS];
 
     private final boolean returnToMainMenu;
     private Field editingField;
@@ -44,7 +44,7 @@ public class GuiBezierCurveConfig extends GuiBase {
 
     @Override
     protected void drawScreenBackground(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        guiGraphics.fill(0, 0, this.width, this.height, 0x76000000);
+        SettingsMenuCommonRenderer.drawBackground(guiGraphics, this.width, this.height);
     }
 
     @Override
@@ -55,9 +55,9 @@ public class GuiBezierCurveConfig extends GuiBase {
     protected void drawContents(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
         Layout layout = this.createLayout();
 
-        this.drawText(guiGraphics, Lang.tr("iterablock.gui.bezier_config.title"), layout.x(), layout.titleY(), TITLE_COLOR, true);
+        SettingsMenuCommonRenderer.drawTitle(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.bezier_config.title"), layout.x(), layout.titleY());
         this.drawPanel(guiGraphics, layout);
-        this.drawRows(guiGraphics, layout);
+        this.drawRows(guiGraphics, mouseX, mouseY, layout);
         this.drawBackButton(guiGraphics, mouseX, mouseY, layout);
     }
 
@@ -140,48 +140,36 @@ public class GuiBezierCurveConfig extends GuiBase {
     }
 
     private void drawPanel(GuiGraphics guiGraphics, Layout layout) {
-        guiGraphics.fill(layout.x(), layout.panelY(), layout.x() + layout.width(), layout.panelY() + layout.panelHeight(), 0x7A0B1012);
-        guiGraphics.fill(layout.x(), layout.panelY(), layout.x() + layout.width(), layout.panelY() + 1, 0xBFFFFFFF);
-        guiGraphics.fill(layout.x(), layout.panelY(), layout.x() + 1, layout.panelY() + layout.panelHeight(), 0x66FFFFFF);
-        guiGraphics.fill(layout.x() + layout.width() - 1, layout.panelY(), layout.x() + layout.width(), layout.panelY() + layout.panelHeight(), 0x66FFFFFF);
-        guiGraphics.fill(layout.x(), layout.panelY() + layout.panelHeight() - 1, layout.x() + layout.width(), layout.panelY() + layout.panelHeight(), 0x66FFFFFF);
-        guiGraphics.fill(layout.x(), layout.panelY() + SECTION_HEIGHT, layout.x() + layout.width(), layout.panelY() + SECTION_HEIGHT + 1, 0x553D5558);
-        guiGraphics.fill(layout.x(), layout.panelY() + SECTION_HEIGHT - 2, layout.x() + 52, layout.panelY() + SECTION_HEIGHT, ACCENT);
-        this.drawCenteredText(guiGraphics, Lang.tr("iterablock.gui.bezier_config.section.basic"), layout.x(), layout.panelY(), 86, SECTION_HEIGHT, TEXT_COLOR);
+        SettingsMenuCommonRenderer.drawPanel(guiGraphics, layout.x(), layout.panelY(), layout.width(), layout.panelHeight(),
+                layout.panelY() + SECTION_HEIGHT);
+        SettingsMenuCommonRenderer.drawTab(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.bezier_config.section.basic"),
+                layout.x(), layout.panelY(), layout.width(), SECTION_HEIGHT, true, false, 0.0, HIDDEN_TAB_INDICATOR);
     }
 
-    private void drawRows(GuiGraphics guiGraphics, Layout layout) {
+    private void drawRows(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
         for (Field field : Field.values()) {
             Row row = this.getRow(layout, field.ordinal());
-            this.drawConfigRow(guiGraphics, row, Lang.tr(field.labelKey()), this.getFieldDisplayValue(field));
+            this.drawConfigRow(guiGraphics, mouseX, mouseY, row, Lang.tr(field.labelKey()), this.getFieldDisplayValue(field));
         }
     }
 
-    private void drawConfigRow(GuiGraphics guiGraphics, Row row, String label, String value) {
+    private void drawConfigRow(GuiGraphics guiGraphics, int mouseX, int mouseY, Row row, String label, String value) {
         int controlY = row.y() + 1;
-        this.drawSimpleButton(guiGraphics, row.x(), controlY, row.labelWidth(), CONTROL_HEIGHT,
-                this.fitText(label, row.labelWidth() - 8), false);
-        this.drawSimpleButton(guiGraphics, row.valueX(), controlY, row.valueWidth(), CONTROL_HEIGHT, value, false);
-        this.drawSimpleButton(guiGraphics, row.resetX(), controlY, RESET_WIDTH, CONTROL_HEIGHT,
-                Lang.tr("iterablock.gui.settings.reset"), false);
+        GuiSettingsControls.drawLabel(guiGraphics, this.textRenderer, this.fitText(label, row.labelWidth() - 8),
+                row.x(), controlY, row.labelWidth(), CONTROL_HEIGHT);
+        GuiSettingsControls.drawValueField(guiGraphics, this.textRenderer, value, row.valueX(), controlY,
+                row.valueWidth(), CONTROL_HEIGHT,
+                this.isInside(mouseX, mouseY, row.valueX(), controlY, row.valueWidth(), CONTROL_HEIGHT) ? 1.0 : 0.0,
+                TEXT_COLOR);
+        GuiSettingsControls.drawButton(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.settings.reset"),
+                row.resetX(), controlY, RESET_WIDTH, CONTROL_HEIGHT,
+                this.isInside(mouseX, mouseY, row.resetX(), controlY, RESET_WIDTH, CONTROL_HEIGHT) ? 1.0 : 0.0);
     }
 
     private void drawBackButton(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
         boolean hovered = this.isInside(mouseX, mouseY, layout.backX(), layout.backY(), BACK_WIDTH, BACK_HEIGHT);
-        this.drawSimpleButton(guiGraphics, layout.backX(), layout.backY(), BACK_WIDTH, BACK_HEIGHT, Lang.tr("iterablock.gui.button.back"), hovered);
-    }
-
-    private void drawSimpleButton(GuiGraphics guiGraphics, int x, int y, int width, int height, String label, boolean hovered) {
-        int fill = hovered ? 0xAA5E6666 : 0x8A4A5050;
-        int border = hovered ? 0xE8FFFFFF : 0xBFFFFFFF;
-
-        guiGraphics.fill(x, y, x + width, y + height, fill);
-        guiGraphics.fill(x, y, x + width, y + 1, border);
-        guiGraphics.fill(x, y + height - 1, x + width, y + height, border);
-        guiGraphics.fill(x, y, x + 1, y + height, border);
-        guiGraphics.fill(x + width - 1, y, x + width, y + height, border);
-        guiGraphics.fill(x + 3, y + height - 2, x + (hovered ? width - 4 : 10), y + height, ACCENT);
-        this.drawCenteredText(guiGraphics, label, x, y, width, height, hovered ? ACTIVE_COLOR : TEXT_COLOR);
+        GuiSettingsControls.drawButton(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.button.back"),
+                layout.backX(), layout.backY(), BACK_WIDTH, BACK_HEIGHT, hovered ? 1.0 : 0.0);
     }
 
     private Row getRow(Layout layout, int index) {
@@ -290,19 +278,6 @@ public class GuiBezierCurveConfig extends GuiBase {
         }
     }
 
-    private void drawText(GuiGraphics guiGraphics, String text, double x, double y, int color, boolean shadow) {
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().scale((float) TEXT_SCALE, (float) TEXT_SCALE, 1.0F);
-        guiGraphics.drawString(this.textRenderer, text, (int) Math.round(x / TEXT_SCALE), (int) Math.round(y / TEXT_SCALE), color, shadow);
-        guiGraphics.pose().popPose();
-    }
-
-    private void drawCenteredText(GuiGraphics guiGraphics, String text, int x, int y, int width, int height, int color) {
-        int textX = x + (int) Math.round((width - this.textRenderer.width(text) * TEXT_SCALE) / 2.0);
-        int textY = y + (int) Math.round((height - 8.0 * TEXT_SCALE) / 2.0);
-        this.drawText(guiGraphics, text, textX, textY, color, false);
-    }
-
     private String fitText(String text, int maxWidth) {
         if (this.textRenderer.width(text) * TEXT_SCALE <= maxWidth) {
             return text;
@@ -323,7 +298,7 @@ public class GuiBezierCurveConfig extends GuiBase {
     }
 
     private boolean isInside(int mouseX, int mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
+        return GuiSettingsControls.contains(mouseX, mouseY, x, y, width, height);
     }
 
     private record Layout(int x, int titleY, int panelY, int width, int panelHeight, int listY, int backX, int backY) {

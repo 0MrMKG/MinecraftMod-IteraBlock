@@ -6,9 +6,9 @@ public enum ToolMode {
     AREA_COPY_PASTE("iterablock.tool.mode.area_copy_paste", "iterablock.tool.mode.area_copy_paste.description", false),
     SCHEMATIC_PLACEMENT("iterablock.tool.mode.schematic_placement", "iterablock.tool.mode.schematic_placement.description", true),
     ARRAY_PLACEMENT("iterablock.tool.mode.array_placement", "iterablock.tool.mode.array_placement.description", true),
-    RANDOM_SCHEMATIC_PLACEMENT("iterablock.tool.mode.random_schematic_placement", "iterablock.tool.mode.random_schematic_placement.description", true),
     BEZIER_CURVE_GENERATION("iterablock.tool.mode.bezier_curve_generation", "iterablock.tool.mode.bezier_curve_generation.description", false),
-    SYMMETRY_PLACEMENT("iterablock.tool.mode.symmetry_placement", "iterablock.tool.mode.symmetry_placement.description", false);
+    SYMMETRY_PLACEMENT("iterablock.tool.mode.symmetry_placement", "iterablock.tool.mode.symmetry_placement.description", false),
+    RANDOM_SCHEMATIC_PLACEMENT("iterablock.tool.mode.random_schematic_placement", "iterablock.tool.mode.random_schematic_placement.description", true);
 
     private final String displayNameKey;
     private final String descriptionKey;

@@ -35,7 +35,7 @@ public final class ToolState {
     private static final Path TEMPORARY_AREA_PATH = Path.of(".iterablock-memory", "temporary-area.litematic").toAbsolutePath().normalize();
     private static final Random RANDOM = new Random();
     private static ToolMode mode = ToolMode.AREA_COPY_PASTE;
-    private static RandomPlacementMode randomPlacementMode = RandomPlacementMode.SCHEMATIC;
+    private static RandomPlacementMode randomPlacementMode = RandomPlacementMode.AREA_BLOCK;
     private static boolean randomAreaLocked;
     private static String lastAction = "";
     private static boolean placeSchematicImmediately;
@@ -69,7 +69,7 @@ public final class ToolState {
             SchematicPlacementState.resetArrayMode();
         }
         if (mode == ToolMode.RANDOM_SCHEMATIC_PLACEMENT) {
-            randomPlacementMode = RandomPlacementMode.SCHEMATIC;
+            randomPlacementMode = RandomPlacementMode.AREA_BLOCK;
             randomAreaLocked = false;
         }
         setLastAction(Lang.tr("iterablock.tool.action.mode_changed", mode.getDisplayName()));

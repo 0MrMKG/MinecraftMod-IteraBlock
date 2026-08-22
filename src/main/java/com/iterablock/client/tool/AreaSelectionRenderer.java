@@ -1,5 +1,6 @@
 package com.iterablock.client.tool;
 
+import com.iterablock.client.config.BuilderHelperClientConfig;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -17,7 +18,7 @@ import net.minecraft.core.BlockPos;
 public final class AreaSelectionRenderer {
     private static final AreaSelectionRenderer INSTANCE = new AreaSelectionRenderer();
     private static final double OVERLAY_EPSILON = 0.003D;
-    private static final int SELECTION_FILL_COLOR = 0x1AFFFFFF;
+    private static final int SELECTION_FILL_RGB = 0xFFFFFF;
     private static final int SELECTION_LINE_COLOR = 0xF4D6FFF0;
     private static final int FIRST_POINT_COLOR = 0x80FF0000;
     private static final int SECOND_POINT_COLOR = 0x800000FF;
@@ -56,13 +57,18 @@ public final class AreaSelectionRenderer {
         int maxX = Math.max(first.getX(), second.getX()) + 1;
         int maxY = Math.max(first.getY(), second.getY()) + 1;
         int maxZ = Math.max(first.getZ(), second.getZ()) + 1;
-        this.renderFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, SELECTION_FILL_COLOR);
+        this.renderFilledBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, this.getSelectionFillColor());
         this.renderLineBox(poseStack, minX, minY, minZ, maxX, maxY, maxZ, SELECTION_LINE_COLOR);
     }
 
     private void renderPoint(PoseStack poseStack, BlockPos point, int color) {
         this.renderFilledBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, color);
         this.renderLineBox(poseStack, point.getX(), point.getY(), point.getZ(), point.getX() + 1, point.getY() + 1, point.getZ() + 1, POINT_BORDER_COLOR);
+    }
+
+    private int getSelectionFillColor() {
+        int alpha = Math.round(BuilderHelperClientConfig.getSelectionFillOpacity() * 255.0F / 100.0F);
+        return alpha << 24 | SELECTION_FILL_RGB;
     }
 
     private void renderFilledBox(PoseStack poseStack, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int color) {

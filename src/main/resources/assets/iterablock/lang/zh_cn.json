@@ -43,6 +43,7 @@
   "iterablock.gui.main_menu.custom_2": "自定义按钮2",
   "iterablock.gui.main_menu.custom_3": "自定义按钮3",
   "iterablock.gui.main_menu.overlap_reset": "恢复默认 0,0,0",
+  "iterablock.gui.main_menu.nbt_overlap": "nbt重合度",
   "iterablock.gui.main_menu.files": "文件",
   "iterablock.gui.main_menu.files.description": "打开 litematic 文件浏览器。",
   "iterablock.gui.main_menu.files.text": "浏览 schematics 目录中的 NBT 和 litematic 文件。",

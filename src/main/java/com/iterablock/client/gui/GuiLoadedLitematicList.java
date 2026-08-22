@@ -3,6 +3,8 @@ package com.iterablock.client.gui;
 import java.util.List;
 
 import com.iterablock.client.Lang;
+import com.iterablock.client.gui.settings.GuiSettingsControls;
+import com.iterablock.client.gui.settings.SettingsMenuCommonRenderer;
 import com.iterablock.client.template.LoadedLitematicManager;
 
 import fi.dy.masa.malilib.gui.GuiBase;
@@ -12,9 +14,10 @@ import org.lwjgl.glfw.GLFW;
 public class GuiLoadedLitematicList extends GuiBase {
     private static final int SAFE_MARGIN = 22;
     private static final int PANEL_MAX_WIDTH = 260;
-    private static final int OUTER_PADDING = 8;
-    private static final int ROW_HEIGHT = 18;
-    private static final int UNLOAD_WIDTH = 58;
+    private static final int SECTION_HEIGHT = 18;
+    private static final int LIST_PADDING = 6;
+    private static final int ROW_HEIGHT = 20;
+    private static final int UNLOAD_WIDTH = 42;
     private static final int BUTTON_WIDTH = 58;
     private static final int BUTTON_HEIGHT = 16;
     private static final double TEXT_SCALE = 0.52;
@@ -41,7 +44,7 @@ public class GuiLoadedLitematicList extends GuiBase {
 
     @Override
     protected void drawScreenBackground(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        guiGraphics.fill(0, 0, this.width, this.height, 0x76000000);
+        SettingsMenuCommonRenderer.drawBackground(guiGraphics, this.width, this.height);
     }
 
     @Override
@@ -55,7 +58,7 @@ public class GuiLoadedLitematicList extends GuiBase {
 
         this.syncSelection(entries, layout);
         this.drawPanel(guiGraphics, layout);
-        this.drawText(guiGraphics, Lang.tr("iterablock.gui.loaded_list.title"), layout.x(), layout.titleY(), 0xFFF3EECF, true);
+        SettingsMenuCommonRenderer.drawTitle(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.loaded_list.title"), layout.x(), layout.titleY());
         this.drawRows(guiGraphics, mouseX, mouseY, layout, entries);
         this.drawButtons(guiGraphics, mouseX, mouseY, layout);
     }
@@ -121,22 +124,15 @@ public class GuiLoadedLitematicList extends GuiBase {
     }
 
     private void drawPanel(GuiGraphics guiGraphics, Layout layout) {
-        int x = layout.x();
-        int y = layout.panelY();
-        int right = x + layout.width();
-        int bottom = y + layout.panelHeight();
-
-        guiGraphics.fill(x, y, right, bottom, 0x7A0B1012);
-        guiGraphics.fill(x, y, right, y + 1, 0xBFFFFFFF);
-        guiGraphics.fill(x, y, x + 1, bottom, 0x66FFFFFF);
-        guiGraphics.fill(right - 1, y, right, bottom, 0x66FFFFFF);
-        guiGraphics.fill(x, bottom - 1, right, bottom, 0x66FFFFFF);
-        this.drawSimpleButtonBox(guiGraphics, layout.listX(), layout.listY(), layout.listWidth(), layout.listHeight(), false);
+        SettingsMenuCommonRenderer.drawPanel(guiGraphics, layout.x(), layout.panelY(), layout.width(), layout.panelHeight(), layout.bodyY());
+        this.drawText(guiGraphics, Lang.tr("iterablock.gui.loaded_list.header"), layout.x() + 8, layout.panelY() + 5, 0xFFF3EECF, false);
     }
 
     private void drawRows(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout, List<LoadedLitematicManager.Entry> entries) {
         if (entries.isEmpty()) {
-            this.drawText(guiGraphics, Lang.tr("iterablock.gui.loaded_list.empty"), layout.listX() + 8, layout.listY() + 8, MUTED, false);
+            String emptyText = Lang.tr("iterablock.gui.loaded_list.empty");
+            int emptyX = layout.listX() + Math.max(0, (layout.listWidth() - (int) Math.ceil(this.textRenderer.width(emptyText) * TEXT_SCALE)) / 2);
+            this.drawText(guiGraphics, emptyText, emptyX, layout.listY() + Math.max(8, layout.listHeight() / 2 - 4), MUTED, false);
             return;
         }
 
@@ -146,37 +142,46 @@ public class GuiLoadedLitematicList extends GuiBase {
             int index = i + this.scrollOffset;
             LoadedLitematicManager.Entry entry = entries.get(index);
             int y = layout.listY() + i * ROW_HEIGHT;
-            boolean hovered = this.isInside(mouseX, mouseY, layout.listX() + 3, y + 2, layout.listWidth() - 6, ROW_HEIGHT - 4);
+            boolean hovered = this.isInside(mouseX, mouseY, layout.listX(), y + 2, layout.listWidth(), ROW_HEIGHT - 4);
             boolean unloadHovered = this.isInside(mouseX, mouseY, layout.unloadX(), y + 2, UNLOAD_WIDTH, 14);
             boolean selected = entry == LoadedLitematicManager.selectedEntry || index == this.selectedIndex;
-            int textRight = layout.unloadX() - 8;
+            int nameWidth = layout.unloadX() - layout.listX() - 6;
+            int textColor = selected ? 0xFFFFF1B0 : TEXT;
 
-            this.drawSimpleButtonBox(guiGraphics, layout.listX() + 3, y + 2, layout.listWidth() - 6, ROW_HEIGHT - 4, selected || hovered);
-            this.drawText(guiGraphics, this.truncate(entry.displayName(), Math.max(12, (textRight - layout.listX()) / 5)), layout.listX() + 10, y + 7, TEXT, false);
-            this.drawButton(guiGraphics, layout.unloadX(), y + 2, UNLOAD_WIDTH, 14, Lang.tr("iterablock.gui.loaded_list.unload"), unloadHovered);
+            if (selected) {
+                guiGraphics.fill(layout.listX(), y + 3, layout.listX() + 2, y + ROW_HEIGHT - 3, 0xFFF3C6D3);
+            }
+            GuiSettingsControls.drawValueField(guiGraphics, this.textRenderer,
+                    this.fitText(entry.displayName(), Math.max(1, nameWidth - 8)),
+                    layout.listX() + 4, y + 2, Math.max(1, nameWidth - 4), 14,
+                    selected ? 1.0 : hovered ? 0.65 : 0.0, textColor);
+            GuiSettingsControls.drawButton(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.loaded_list.unload"),
+                    layout.unloadX(), y + 2, UNLOAD_WIDTH, 14, unloadHovered ? 1.0 : 0.0);
         }
+
+        this.drawScrollbar(guiGraphics, layout, entries.size());
     }
 
     private void drawButtons(GuiGraphics guiGraphics, int mouseX, int mouseY, Layout layout) {
-        this.drawButton(guiGraphics, layout.closeX(), layout.buttonY(), BUTTON_WIDTH, BUTTON_HEIGHT, Lang.tr("iterablock.gui.button.back"), this.isInside(mouseX, mouseY, layout.closeX(), layout.buttonY(), BUTTON_WIDTH, BUTTON_HEIGHT));
+        GuiSettingsControls.drawButton(guiGraphics, this.textRenderer, Lang.tr("iterablock.gui.button.back"),
+                layout.closeX(), layout.buttonY(), BUTTON_WIDTH, BUTTON_HEIGHT,
+                this.isInside(mouseX, mouseY, layout.closeX(), layout.buttonY(), BUTTON_WIDTH, BUTTON_HEIGHT) ? 1.0 : 0.0);
     }
 
-    private void drawButton(GuiGraphics guiGraphics, int x, int y, int width, int height, String label, boolean hovered) {
-        this.drawSimpleButtonBox(guiGraphics, x, y, width, height, hovered);
-        int labelX = x + Math.max(3, (int) Math.round((width - this.textRenderer.width(label) * TEXT_SCALE) / 2.0));
-        int labelY = y + (int) Math.round((height - 8.0 * TEXT_SCALE) / 2.0);
-        this.drawText(guiGraphics, label, labelX, labelY, 0xFFFFFFFF, false);
-    }
+    private void drawScrollbar(GuiGraphics guiGraphics, Layout layout, int totalRows) {
+        int visibleRows = this.getVisibleRowCount(layout);
+        if (totalRows <= visibleRows) {
+            return;
+        }
 
-    private void drawSimpleButtonBox(GuiGraphics guiGraphics, int x, int y, int width, int height, boolean hovered) {
-        int fill = hovered ? 0xAA5E6666 : 0x8A4A5050;
-        int border = hovered ? 0xE8FFFFFF : 0xBFFFFFFF;
-
-        guiGraphics.fill(x, y, x + width, y + height, fill);
-        guiGraphics.fill(x, y, x + width, y + 1, border);
-        guiGraphics.fill(x, y + height - 1, x + width, y + height, border);
-        guiGraphics.fill(x, y, x + 1, y + height, border);
-        guiGraphics.fill(x + width - 1, y, x + width, y + height, border);
+        int trackX = layout.x() + layout.width() - 5;
+        int trackY = layout.listY() + 3;
+        int trackHeight = Math.max(1, layout.listHeight() - 6);
+        int thumbHeight = Math.max(14, trackHeight * visibleRows / totalRows);
+        int maxOffset = Math.max(1, totalRows - visibleRows);
+        int thumbY = trackY + (trackHeight - thumbHeight) * this.scrollOffset / maxOffset;
+        guiGraphics.fill(trackX, trackY, trackX + 1, trackY + trackHeight, 0x556B777A);
+        guiGraphics.fill(trackX - 1, thumbY, trackX + 2, thumbY + thumbHeight, 0xB0B0B8BA);
     }
 
     private void unloadEntry(LoadedLitematicManager.Entry entry) {
@@ -225,18 +230,19 @@ public class GuiLoadedLitematicList extends GuiBase {
         int x = (this.width - width) / 2;
         int titleY = Math.max(10, SAFE_MARGIN);
         int panelY = titleY + 20;
-        int desiredPanelHeight = OUTER_PADDING * 2 + ROW_HEIGHT * 6;
-        int maximumPanelHeight = Math.max(ROW_HEIGHT + OUTER_PADDING * 2,
+        int desiredPanelHeight = SECTION_HEIGHT + LIST_PADDING * 2 + ROW_HEIGHT * 6;
+        int maximumPanelHeight = Math.max(SECTION_HEIGHT + ROW_HEIGHT + LIST_PADDING * 2,
                 this.height - SAFE_MARGIN - BUTTON_HEIGHT - panelY - 10);
         int panelHeight = Math.min(desiredPanelHeight, maximumPanelHeight);
         int buttonY = Math.min(this.height - SAFE_MARGIN - BUTTON_HEIGHT, panelY + panelHeight + 8);
-        int listX = x + OUTER_PADDING;
-        int listY = panelY + OUTER_PADDING;
-        int listWidth = width - OUTER_PADDING * 2;
-        int listHeight = Math.max(ROW_HEIGHT, panelHeight - OUTER_PADDING * 2);
+        int bodyY = panelY + SECTION_HEIGHT;
+        int listX = x + LIST_PADDING;
+        int listY = bodyY + LIST_PADDING;
+        int listWidth = width - LIST_PADDING * 2;
+        int listHeight = Math.max(ROW_HEIGHT, panelHeight - SECTION_HEIGHT - LIST_PADDING * 2);
         int closeX = x + width - BUTTON_WIDTH;
-        int unloadX = listX + listWidth - UNLOAD_WIDTH - 3;
-        return new Layout(x, titleY, panelY, width, panelHeight, listX, listY, listWidth, listHeight, buttonY, unloadX, closeX);
+        int unloadX = listX + listWidth - UNLOAD_WIDTH;
+        return new Layout(x, titleY, panelY, width, panelHeight, bodyY, listX, listY, listWidth, listHeight, buttonY, unloadX, closeX);
     }
 
     private int getVisibleRowCount(Layout layout) {
@@ -254,14 +260,20 @@ public class GuiLoadedLitematicList extends GuiBase {
         return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
 
-    private String truncate(String text, int maxLength) {
-        if (text.length() <= maxLength) {
+    private String fitText(String text, int maxWidth) {
+        if (this.textRenderer.width(text) * TEXT_SCALE <= maxWidth) {
             return text;
         }
 
-        return text.substring(0, Math.max(0, maxLength - 1)) + "...";
+        String suffix = "...";
+        String result = text;
+        while (!result.isEmpty() && (this.textRenderer.width(result) + this.textRenderer.width(suffix)) * TEXT_SCALE > maxWidth) {
+            result = result.substring(0, result.length() - 1);
+        }
+        return result.isEmpty() ? suffix : result + suffix;
     }
 
-    private record Layout(int x, int titleY, int panelY, int width, int panelHeight, int listX, int listY, int listWidth, int listHeight, int buttonY, int unloadX, int closeX) {
+    private record Layout(int x, int titleY, int panelY, int width, int panelHeight, int bodyY,
+                          int listX, int listY, int listWidth, int listHeight, int buttonY, int unloadX, int closeX) {
     }
 }

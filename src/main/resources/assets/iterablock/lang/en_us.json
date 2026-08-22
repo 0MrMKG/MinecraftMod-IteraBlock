@@ -46,6 +46,7 @@
   "iterablock.gui.main_menu.custom_2": "Custom Button 2",
   "iterablock.gui.main_menu.custom_3": "Custom Button 3",
   "iterablock.gui.main_menu.overlap_reset": "Reset 0,0,0",
+  "iterablock.gui.main_menu.nbt_overlap": "NBT Overlap",
   "iterablock.gui.main_menu.files": "Files",
   "iterablock.gui.main_menu.files.description": "Open the litematic file browser.",
   "iterablock.gui.main_menu.files.text": "Browse NBT and litematic files from schematics.",

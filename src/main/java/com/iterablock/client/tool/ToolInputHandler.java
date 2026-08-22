@@ -182,11 +182,7 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
             return false;
         }
 
-        if (this.wheelBypass) {
-            return false;
-        }
-
-        if (amount == 0.0 || !canHandleToolInput(minecraft)) {
+        if (amount == 0.0 || !this.isToolWheelReserved(minecraft, true)) {
             return false;
         }
 
@@ -232,6 +228,37 @@ public class ToolInputHandler implements IKeyboardInputHandler, IMouseInputHandl
         }
 
         return false;
+    }
+
+    /** Returns whether a normal wheel event is currently available to vanilla hotbar selection. */
+    public boolean canScrollHotbar(Minecraft minecraft) {
+        return !this.isToolWheelReserved(minecraft, false);
+    }
+
+    private boolean isToolWheelReserved(Minecraft minecraft, boolean includeControlModifier) {
+        if (minecraft.player == null
+                || !ToolState.hasToolItem(minecraft.player)
+                || this.wheelBypass
+                || !canHandleToolInput(minecraft)) {
+            return false;
+        }
+
+        if (includeControlModifier && Screen.hasControlDown()) {
+            return true;
+        }
+
+        return switch (ToolState.getMode()) {
+            case AREA_COPY_PASTE -> !ToolState.isRandomAreaLocked() && AreaSelectionState.hasFirstCorner();
+            case SCHEMATIC_PLACEMENT -> SchematicPlacementState.hasPlacement()
+                    && SchematicPlacementState.isPlacementPointAdjusting();
+            case RANDOM_SCHEMATIC_PLACEMENT -> ToolState.isRandomAreaMode()
+                    && !ToolState.isRandomAreaLocked()
+                    && AreaSelectionState.hasFirstCorner();
+            case ARRAY_PLACEMENT -> SchematicPlacementState.hasPlacement();
+            case SYMMETRY_PLACEMENT -> SymmetryPlacementState.hasCenter()
+                    && !SymmetryPlacementState.isLocked();
+            default -> false;
+        };
     }
 
     private static boolean canHandleToolInput(Minecraft minecraft) {
